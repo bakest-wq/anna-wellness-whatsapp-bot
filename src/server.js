@@ -9,7 +9,14 @@ const { verifyWhatsAppCloudSignature, verifyGreenWebhook } = require("./webhookA
 const { persistLead } = require("./sheets");
 const { SALON, SERVICES, FAQ } = require("./knowledge");
 const { handleIncomingMessage } = require("./conversation");
-const { parseIncomingFromGreen, parseIncomingFromCloud, sendWhatsApp } = require("./whatsapp");
+const { detectLanguage } = require("./language");
+const { getSession } = require("./sessionStore");
+const {
+  parseIncomingFromGreen,
+  parseIncomingFromCloud,
+  sendWhatsApp,
+  sendMainMenuButtons
+} = require("./whatsapp");
 const { isDuplicate } = require("./messageDedup");
 
 const app = express();
@@ -102,21 +109,29 @@ async function processWebhook(req, res) {
       messageId: payload.messageId
     });
 
-    let reply;
+    let result;
 
     if (WEBHOOK_TEST_REPLY) {
-      reply =
-        "Здравствуйте 🌿 Рада вас видеть. Бот работает. Чем могу помочь — практика или запись?";
+      result = {
+        reply:
+          "Здравствуйте 🌿 Рада вас видеть. Выберите, пожалуйста, пункт в меню ниже.",
+        withMenu: true
+      };
     } else {
-      reply = await handleIncomingMessage({
+      result = await handleIncomingMessage({
         userId: payload.userId,
         text: payload.text,
+        buttonId: payload.buttonId,
+        buttonText: payload.buttonText,
+        isButton: payload.isButton,
         openai,
         model: OPENAI_MODEL,
         logger,
         notifyAdmin
       });
     }
+
+    const reply = result?.reply || result;
 
     if (reply) {
       await sendWhatsApp({
@@ -125,7 +140,17 @@ async function processWebhook(req, res) {
         text: reply,
         logger
       });
-      logger.info("Reply sent", { userId: payload.userId, preview: reply.slice(0, 90) });
+      logger.info("Reply sent", { userId: payload.userId, preview: String(reply).slice(0, 90) });
+    }
+
+    if (result?.withMenu && waConfig.provider === "green") {
+      const session = getSession(payload.userId);
+      await sendMainMenuButtons({
+        config: waConfig,
+        to: payload.userId,
+        language: session.language || detectLanguage(payload.text),
+        logger
+      });
     }
   } catch (err) {
     logger.error("Webhook error", { message: err.message, data: err?.response?.data });

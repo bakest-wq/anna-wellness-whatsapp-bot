@@ -5,6 +5,7 @@ const { getAiReply } = require("./ai");
 const { getSession, updateSession } = require("./sessionStore");
 const { initBooking, processBookingMessage, buildLead, smartFill } = require("./booking");
 const { isCancellation } = require("./validators");
+const { resolveButtonIntent, enrichScenarioReply } = require("./buttons");
 
 const SCENARIO_INTENTS = [
   "greeting",
@@ -29,15 +30,52 @@ function pushHistory(session, role, content) {
 function welcomeMessage(session, language) {
   if (session.profile?.name && session.profile.visits > 0) {
     return language === "kz"
-      ? `Қайта қош келдіңіз, ${session.profile.name} 🌿 Жағымды көру — әрқашан рахат. Практика туралы айтайын ба, әлде жазылғыңыз келе ме?`
-      : `Рада снова видеть вас, ${session.profile.name} 🌿 Подскажите, рассказать о практике или записать на сеанс?`;
+      ? `Қайта қош келдіңіз, ${session.profile.name} 🌿`
+      : `Рада снова видеть вас, ${session.profile.name} 🌿`;
   }
-  return getScenarioResponse("greeting", language);
+  return language === "kz"
+    ? "Сәлеметсіз бе 🌿"
+    : "Здравствуйте 🌿";
 }
 
-async function handleIncomingMessage({ userId, text, openai, model, logger, notifyAdmin }) {
+async function handleScenarioIntent(intent, session, userId, text, language, notifyAdmin, logger) {
+  if (intent === "booking") {
+    session.booking = initBooking(language);
+    smartFill(session.booking, text);
+    const result = processBookingMessage(session.booking, text, language);
+    if (result.done) {
+      const lead = buildLead(session.booking, userId, language);
+      await notifyAdmin(lead);
+      session.profile.name = session.booking.data.name;
+      session.profile.phone = session.booking.data.phone;
+      session.profile.visits = (session.profile.visits || 0) + 1;
+      session.booking = null;
+      return { reply: result.reply };
+    }
+    return { reply: result.reply || getScenarioResponse("booking_start", language) };
+  }
+
+  const reply = enrichScenarioReply(
+    intent,
+    getScenarioResponse(intent, language),
+    language
+  );
+  return { reply };
+}
+
+async function handleIncomingMessage({
+  userId,
+  text,
+  buttonId,
+  buttonText,
+  isButton,
+  openai,
+  model,
+  logger,
+  notifyAdmin
+}) {
   const session = getSession(userId);
-  const language = detectLanguage(text, session.language);
+  const language = detectLanguage(text || buttonText, session.language);
   session.language = language;
 
   if (isCancellation(text) && session.booking?.active) {
@@ -46,7 +84,7 @@ async function handleIncomingMessage({ userId, text, openai, model, logger, noti
     pushHistory(session, "user", text);
     pushHistory(session, "assistant", reply);
     updateSession(userId, session);
-    return reply;
+    return { reply };
   }
 
   if (session.booking?.active) {
@@ -57,7 +95,7 @@ async function handleIncomingMessage({ userId, text, openai, model, logger, noti
       pushHistory(session, "user", text);
       pushHistory(session, "assistant", result.reply);
       updateSession(userId, session);
-      return result.reply;
+      return { reply: result.reply };
     }
 
     if (result.done) {
@@ -71,13 +109,34 @@ async function handleIncomingMessage({ userId, text, openai, model, logger, noti
       pushHistory(session, "assistant", result.reply);
       updateSession(userId, session);
       logger.info("Booking completed", { userId, name: lead.payload.name });
-      return result.reply;
+      return { reply: result.reply };
     }
 
     pushHistory(session, "user", text);
     pushHistory(session, "assistant", result.reply);
     updateSession(userId, session);
-    return result.reply;
+    return { reply: result.reply };
+  }
+
+  if (isButton) {
+    const intent = resolveButtonIntent(buttonId, buttonText || text);
+    logger.info("Button pressed", { userId, buttonId, buttonText, intent });
+
+    if (intent) {
+      const result = await handleScenarioIntent(
+        intent,
+        session,
+        userId,
+        text,
+        language,
+        notifyAdmin,
+        logger
+      );
+      pushHistory(session, "user", `[кнопка] ${buttonText || text}`);
+      pushHistory(session, "assistant", result.reply);
+      updateSession(userId, session);
+      return result;
+    }
   }
 
   const clientIntent = detectClientIntent(text, language);
@@ -89,40 +148,47 @@ async function handleIncomingMessage({ userId, text, openai, model, logger, noti
   });
 
   if (clientIntent.intent === "booking") {
-    session.booking = initBooking(language);
-    smartFill(session.booking, text);
-    const result = processBookingMessage(session.booking, text, language);
-    if (result.done) {
-      const lead = buildLead(session.booking, userId, language);
-      await notifyAdmin(lead);
-      session.profile.name = session.booking.data.name;
-      session.profile.phone = session.booking.data.phone;
-      session.profile.visits = (session.profile.visits || 0) + 1;
-      session.booking = null;
-      updateSession(userId, session);
-      return result.reply;
-    }
-    const reply = result.reply || getScenarioResponse("booking_start", language);
+    const result = await handleScenarioIntent(
+      "booking",
+      session,
+      userId,
+      text,
+      language,
+      notifyAdmin,
+      logger
+    );
     pushHistory(session, "user", text);
-    pushHistory(session, "assistant", reply);
+    pushHistory(session, "assistant", result.reply);
     updateSession(userId, session);
-    return reply;
+    return result;
   }
 
   if (SCENARIO_INTENTS.includes(clientIntent.intent)) {
-    const reply = getScenarioResponse(clientIntent.intent, language);
+    const result = await handleScenarioIntent(
+      clientIntent.intent,
+      session,
+      userId,
+      text,
+      language,
+      notifyAdmin,
+      logger
+    );
     pushHistory(session, "user", text);
-    pushHistory(session, "assistant", reply);
+    pushHistory(session, "assistant", result.reply);
     updateSession(userId, session);
-    return reply;
+    return result;
   }
 
-  if (!session.history.length) {
+  const isFirstContact = !session.history.length;
+  const isGreeting =
+    isFirstContact || clientIntent.intent === "greeting" || /^(привет|здравств|сәлем|салем)/i.test(text);
+
+  if (isGreeting) {
     const reply = welcomeMessage(session, language);
     pushHistory(session, "user", text);
     pushHistory(session, "assistant", reply);
     updateSession(userId, session);
-    return reply;
+    return { reply, withMenu: true };
   }
 
   pushHistory(session, "user", text);
@@ -137,7 +203,7 @@ async function handleIncomingMessage({ userId, text, openai, model, logger, noti
   });
   pushHistory(session, "assistant", aiText);
   updateSession(userId, session);
-  return aiText;
+  return { reply: aiText };
 }
 
 module.exports = { handleIncomingMessage };
