@@ -1,6 +1,6 @@
 {
   "name": "anna-wellness-whatsapp-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "WhatsApp AI bot backend for wellness master Anna Abdulrashidovna",
   "main": "src/server.js",
   "scripts": {

@@ -1,6 +1,7 @@
 node_modules
 .env
 logs/
+data/
 credentials/
 npm-debug.log*
 yarn-error.log*
