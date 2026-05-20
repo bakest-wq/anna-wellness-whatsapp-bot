@@ -116,21 +116,24 @@ async function handleIncomingMessage({
     return { reply: result.reply };
   }
 
-  const numericIntent = resolveNumericMenu(text);
-  if (numericIntent) {
-    const result = await handleScenarioIntent(
-      numericIntent,
-      session,
-      userId,
-      text,
-      language,
-      notifyAdmin,
-      logger
-    );
-    pushHistory(session, "user", text);
-    pushHistory(session, "assistant", result.reply);
-    updateSession(userId, session);
-    return result;
+  if (!session.booking?.active) {
+    const numericIntent = resolveNumericMenu(text);
+    if (numericIntent) {
+      logger.info("Text menu choice", { userId, choice: text.trim(), intent: numericIntent });
+      const result = await handleScenarioIntent(
+        numericIntent,
+        session,
+        userId,
+        text,
+        language,
+        notifyAdmin,
+        logger
+      );
+      pushHistory(session, "user", text);
+      pushHistory(session, "assistant", result.reply);
+      updateSession(userId, session);
+      return result;
+    }
   }
 
   if (isButton) {

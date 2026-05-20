@@ -112,10 +112,14 @@ async function sendWhatsAppGreen({ config, to, text, logger }) {
   await postGreen(config, "sendMessage", { chatId, message: text }, logger);
 }
 
-async function sendTextMenuFallback({ config, to, language, logger }) {
+async function sendTextMenuFallback({ config, to, language, logger, reason }) {
+  logger?.warn?.("SendInteractiveButtonsReply unavailable, using text menu", {
+    to,
+    language,
+    reason: reason || "not_supported"
+  });
   const text = getTextMenuFallback(language);
   await sendWhatsAppGreen({ config, to, text, logger });
-  logger?.warn?.("Interactive buttons unavailable — text menu sent", { to, language });
 }
 
 async function sendMainMenuButtons({ config, to, language, logger }) {
@@ -130,12 +134,13 @@ async function sendMainMenuButtons({ config, to, language, logger }) {
     logger?.info?.("Interactive menu sent (SendInteractiveButtonsReply)", { chatId, language });
     return { mode: "interactive" };
   } catch (err) {
-    logger?.error?.("SendInteractiveButtonsReply failed", {
-      message: err.message,
-      status: err?.response?.status,
-      data: err?.response?.data
+    await sendTextMenuFallback({
+      config,
+      to,
+      language,
+      logger,
+      reason: err?.response?.data?.message || err.message
     });
-    await sendTextMenuFallback({ config, to, language, logger });
     return { mode: "text_fallback" };
   }
 }

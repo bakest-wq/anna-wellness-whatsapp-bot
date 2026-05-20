@@ -94,8 +94,13 @@ const TEXT_TO_INTENT = {
 };
 
 function resolveNumericMenu(text) {
-  const n = String(text || "").trim().replace(/[^\d]/g, "");
-  if (["1", "2", "3", "4"].includes(n)) return ID_TO_INTENT[n];
+  const t = String(text || "").trim();
+  const exact = t.match(/^([1-4])$/);
+  if (exact) return ID_TO_INTENT[exact[1]];
+
+  const withSuffix = t.match(/^([1-4])[\s.)-–]/);
+  if (withSuffix) return ID_TO_INTENT[withSuffix[1]];
+
   return null;
 }
 
