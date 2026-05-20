@@ -5,7 +5,7 @@ const { getAiReply } = require("./ai");
 const { getSession, updateSession } = require("./sessionStore");
 const { initBooking, processBookingMessage, buildLead, smartFill } = require("./booking");
 const { isCancellation } = require("./validators");
-const { resolveButtonIntent, enrichScenarioReply } = require("./buttons");
+const { resolveButtonIntent, resolveNumericMenu, enrichScenarioReply } = require("./buttons");
 
 const SCENARIO_INTENTS = [
   "greeting",
@@ -30,12 +30,10 @@ function pushHistory(session, role, content) {
 function welcomeMessage(session, language) {
   if (session.profile?.name && session.profile.visits > 0) {
     return language === "kz"
-      ? `Қайта қош келдіңіз, ${session.profile.name} 🌿`
-      : `Рада снова видеть вас, ${session.profile.name} 🌿`;
+      ? `Қайта қош келдіңіз, ${session.profile.name} 🌿\nӨтінім, қызығушылық бөлімді таңдаңыз.`
+      : `Рада снова видеть вас, ${session.profile.name} 🌿\nВыберите, пожалуйста, интересующий раздел.`;
   }
-  return language === "kz"
-    ? "Сәлеметсіз бе 🌿"
-    : "Здравствуйте 🌿";
+  return null;
 }
 
 async function handleScenarioIntent(intent, session, userId, text, language, notifyAdmin, logger) {
@@ -118,6 +116,23 @@ async function handleIncomingMessage({
     return { reply: result.reply };
   }
 
+  const numericIntent = resolveNumericMenu(text);
+  if (numericIntent) {
+    const result = await handleScenarioIntent(
+      numericIntent,
+      session,
+      userId,
+      text,
+      language,
+      notifyAdmin,
+      logger
+    );
+    pushHistory(session, "user", text);
+    pushHistory(session, "assistant", result.reply);
+    updateSession(userId, session);
+    return result;
+  }
+
   if (isButton) {
     const intent = resolveButtonIntent(buttonId, buttonText || text);
     logger.info("Button pressed", { userId, buttonId, buttonText, intent });
@@ -137,6 +152,10 @@ async function handleIncomingMessage({
       updateSession(userId, session);
       return result;
     }
+  }
+
+  if (/^(меню|menu|басты меню)$/i.test(text.trim())) {
+    return { withMenu: true, reply: null };
   }
 
   const clientIntent = detectClientIntent(text, language);
@@ -186,7 +205,7 @@ async function handleIncomingMessage({
   if (isGreeting) {
     const reply = welcomeMessage(session, language);
     pushHistory(session, "user", text);
-    pushHistory(session, "assistant", reply);
+    if (reply) pushHistory(session, "assistant", reply);
     updateSession(userId, session);
     return { reply, withMenu: true };
   }

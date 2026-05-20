@@ -18,6 +18,64 @@ const ID_TO_INTENT = {
   "4": "contraindications"
 };
 
+const MENU_ITEMS = [
+  { id: BUTTON_IDS.PRICE, intent: "price", ru: "Узнать цены", kz: "Бағалар" },
+  { id: BUTTON_IDS.BOOKING, intent: "booking", ru: "Записаться", kz: "Жазылу" },
+  { id: BUTTON_IDS.ADDRESS, intent: "address", ru: "Адрес", kz: "Мекенжай" },
+  { id: BUTTON_IDS.CONTRA, intent: "contraindications", ru: "Противопоказания", kz: "Қарсы көрсетілім" }
+];
+
+function getGreetingBody(language) {
+  if (language === "kz") {
+    return "Сәлеметсіз бе 🌿\nӨтінім, қызығушылық бөлімді таңдаңыз.";
+  }
+  return "Здравствуйте 🌿\nВыберите, пожалуйста, интересующий раздел.";
+}
+
+function getInteractiveMenu(language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const labels = MENU_ITEMS.map((item) => ({
+    buttonId: item.id,
+    buttonText: item[lang]
+  }));
+
+  return {
+    header: "Sakina Beauty 🌿",
+    body: getGreetingBody(language),
+    footer: `${SALON.master} · wellness · Актобе`,
+    buttons: labels
+  };
+}
+
+function getInteractiveMenuParts(language) {
+  const menu = getInteractiveMenu(language);
+  return [
+    {
+      header: menu.header,
+      body: menu.body,
+      footer: menu.footer,
+      buttons: menu.buttons.slice(0, 3)
+    },
+    {
+      header: "Sakina Beauty 🌿",
+      body: language === "kz" ? "Тағы бір бөлім 🌿" : "Ещё один раздел 🌿",
+      footer: menu.footer,
+      buttons: [menu.buttons[3]]
+    }
+  ];
+}
+
+function getTextMenuFallback(language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const lines = MENU_ITEMS.map((item, i) => `${i + 1} — ${item[lang]}`).join("\n");
+
+  if (lang === "kz") {
+    return `${getGreetingBody(language)}\n\n${lines}\n\nӨтінім, санды жіберіңіз (мысалы: 2).`;
+  }
+
+  return `${getGreetingBody(language)}\n\n${lines}\n\nПожалуйста, отправьте цифру (например: 2).`;
+}
+
 const TEXT_TO_INTENT = {
   ru: {
     "узнать цены": "price",
@@ -28,61 +86,24 @@ const TEXT_TO_INTENT = {
     "противопоказания": "contraindications"
   },
   kz: {
-    "бағаларды білу": "price",
     "бағалар": "price",
     "жазылу": "booking",
-    "жазылғым": "booking",
     "мекенжай": "address",
-    "қарсы көрсетілімдер": "contraindications"
+    "қарсы көрсетілім": "contraindications"
   }
 };
 
-function getMenuBlocks(language) {
-  const lang = language === "kz" ? "kz" : "ru";
-
-  if (lang === "kz") {
-    return {
-      main: {
-        header: "Sakina Beauty 🌿",
-        message:
-          "Сізді қуана қарсы аламыз.\n\nПрактика, баға немесе жазылу — төменнен таңдаңыз:",
-        footer: `${SALON.master} · Ақтөбе`,
-        buttons: [
-          { buttonId: BUTTON_IDS.PRICE, buttonText: "💰 Бағалар" },
-          { buttonId: BUTTON_IDS.BOOKING, buttonText: "📅 Жазылу" },
-          { buttonId: BUTTON_IDS.ADDRESS, buttonText: "📍 Мекенжай" }
-        ]
-      },
-      extra: {
-        message: "Денсаулық туралы маңызды ақпарат 🌿",
-        footer: "Абайлап таңдауға көмектесеміз",
-        buttons: [{ buttonId: BUTTON_IDS.CONTRA, buttonText: "⚠️ Қарсы көрсетілім" }]
-      }
-    };
-  }
-
-  return {
-    main: {
-      header: "Sakina Beauty 🌿",
-      message:
-        "Рады приветствовать вас.\n\nВыберите, пожалуйста, что вас интересует:",
-      footer: `${SALON.master} · Актобе`,
-      buttons: [
-        { buttonId: BUTTON_IDS.PRICE, buttonText: "💰 Узнать цены" },
-        { buttonId: BUTTON_IDS.BOOKING, buttonText: "📅 Записаться" },
-        { buttonId: BUTTON_IDS.ADDRESS, buttonText: "📍 Адрес" }
-      ]
-    },
-    extra: {
-      message: "Важно знать перед визитом 🌿",
-      footer: "Подберём формат бережно",
-      buttons: [{ buttonId: BUTTON_IDS.CONTRA, buttonText: "⚠️ Противопоказания" }]
-    }
-  };
+function resolveNumericMenu(text) {
+  const n = String(text || "").trim().replace(/[^\d]/g, "");
+  if (["1", "2", "3", "4"].includes(n)) return ID_TO_INTENT[n];
+  return null;
 }
 
 function resolveButtonIntent(buttonId, buttonText) {
   if (buttonId && ID_TO_INTENT[buttonId]) return ID_TO_INTENT[buttonId];
+
+  const numeric = resolveNumericMenu(buttonText || buttonId);
+  if (numeric) return numeric;
 
   const t = String(buttonText || "").toLowerCase().trim();
   for (const map of [TEXT_TO_INTENT.ru, TEXT_TO_INTENT.kz]) {
@@ -113,7 +134,11 @@ function enrichScenarioReply(intent, reply, language) {
 
 module.exports = {
   BUTTON_IDS,
-  getMenuBlocks,
+  getGreetingBody,
+  getInteractiveMenu,
+  getInteractiveMenuParts,
+  getTextMenuFallback,
   resolveButtonIntent,
+  resolveNumericMenu,
   enrichScenarioReply
 };

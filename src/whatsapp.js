@@ -1,6 +1,9 @@
 const axios = require("axios");
 const { normalizePhone } = require("./validators");
-const { getMenuBlocks } = require("./buttons");
+const {
+  getInteractiveMenuParts,
+  getTextMenuFallback
+} = require("./buttons");
 
 function toChatId(to) {
   const phone = normalizePhone(to).replace("+", "");
@@ -89,38 +92,19 @@ async function postGreen(config, endpoint, payload, logger) {
   return res.data;
 }
 
-async function sendButtonsMessage(config, block, chatId, logger) {
-  const messageText = block.header ? `${block.header}\n\n${block.message}` : block.message;
-
+async function sendInteractiveButtonsReply(config, block, chatId, logger) {
   const payload = {
     chatId,
-    message: messageText,
-    footer: block.footer,
-    buttons: block.buttons
+    header: block.header || "Sakina Beauty 🌿",
+    body: block.body,
+    footer: block.footer || "",
+    buttons: block.buttons.map((b) => ({
+      buttonId: b.buttonId,
+      buttonText: b.buttonText
+    }))
   };
 
-  try {
-    return await postGreen(config, "sendButtons", payload, logger);
-  } catch (err) {
-    const status = err?.response?.status;
-    logger?.warn?.("sendButtons failed, fallback to sendInteractiveButtonsReply", {
-      status,
-      message: err.message
-    });
-
-    const interactivePayload = {
-      chatId,
-      header: block.header || "Sakina Beauty 🌿",
-      body: block.message,
-      footer: block.footer || "",
-      buttons: block.buttons.map((b) => ({
-        buttonId: b.buttonId,
-        buttonText: b.buttonText
-      }))
-    };
-
-    return await postGreen(config, "sendInteractiveButtonsReply", interactivePayload, logger);
-  }
+  return postGreen(config, "sendInteractiveButtonsReply", payload, logger);
 }
 
 async function sendWhatsAppGreen({ config, to, text, logger }) {
@@ -128,15 +112,32 @@ async function sendWhatsAppGreen({ config, to, text, logger }) {
   await postGreen(config, "sendMessage", { chatId, message: text }, logger);
 }
 
+async function sendTextMenuFallback({ config, to, language, logger }) {
+  const text = getTextMenuFallback(language);
+  await sendWhatsAppGreen({ config, to, text, logger });
+  logger?.warn?.("Interactive buttons unavailable — text menu sent", { to, language });
+}
+
 async function sendMainMenuButtons({ config, to, language, logger }) {
   const chatId = toChatId(to);
-  const blocks = getMenuBlocks(language);
+  const parts = getInteractiveMenuParts(language);
 
-  await sendButtonsMessage(config, blocks.main, chatId, logger);
-  await new Promise((r) => setTimeout(r, 600));
-  await sendButtonsMessage(config, blocks.extra, chatId, logger);
-
-  logger?.info?.("Main menu buttons sent", { chatId, language });
+  try {
+    for (let i = 0; i < parts.length; i++) {
+      await sendInteractiveButtonsReply(config, parts[i], chatId, logger);
+      if (i < parts.length - 1) await new Promise((r) => setTimeout(r, 500));
+    }
+    logger?.info?.("Interactive menu sent (SendInteractiveButtonsReply)", { chatId, language });
+    return { mode: "interactive" };
+  } catch (err) {
+    logger?.error?.("SendInteractiveButtonsReply failed", {
+      message: err.message,
+      status: err?.response?.status,
+      data: err?.response?.data
+    });
+    await sendTextMenuFallback({ config, to, language, logger });
+    return { mode: "text_fallback" };
+  }
 }
 
 async function sendWhatsAppCloud({ config, to, text, logger }) {
@@ -167,5 +168,6 @@ module.exports = {
   parseIncomingFromGreen,
   parseIncomingFromCloud,
   sendWhatsApp,
-  sendMainMenuButtons
+  sendMainMenuButtons,
+  sendTextMenuFallback
 };

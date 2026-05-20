@@ -15,7 +15,8 @@ const {
   parseIncomingFromGreen,
   parseIncomingFromCloud,
   sendWhatsApp,
-  sendMainMenuButtons
+  sendMainMenuButtons,
+  sendTextMenuFallback
 } = require("./whatsapp");
 const { isDuplicate } = require("./messageDedup");
 
@@ -112,11 +113,7 @@ async function processWebhook(req, res) {
     let result;
 
     if (WEBHOOK_TEST_REPLY) {
-      result = {
-        reply:
-          "Здравствуйте 🌿 Рада вас видеть. Выберите, пожалуйста, пункт в меню ниже.",
-        withMenu: true
-      };
+      result = { reply: null, withMenu: true };
     } else {
       result = await handleIncomingMessage({
         userId: payload.userId,
@@ -131,7 +128,7 @@ async function processWebhook(req, res) {
       });
     }
 
-    const reply = result?.reply || result;
+    const reply = result?.reply || (typeof result === "string" ? result : null);
 
     if (reply) {
       await sendWhatsApp({
@@ -143,14 +140,25 @@ async function processWebhook(req, res) {
       logger.info("Reply sent", { userId: payload.userId, preview: String(reply).slice(0, 90) });
     }
 
-    if (result?.withMenu && waConfig.provider === "green") {
+    if (result?.withMenu) {
       const session = getSession(payload.userId);
-      await sendMainMenuButtons({
-        config: waConfig,
-        to: payload.userId,
-        language: session.language || detectLanguage(payload.text),
-        logger
-      });
+      const lang = session.language || detectLanguage(payload.text);
+
+      if (waConfig.provider === "green") {
+        await sendMainMenuButtons({
+          config: waConfig,
+          to: payload.userId,
+          language: lang,
+          logger
+        });
+      } else {
+        await sendTextMenuFallback({
+          config: waConfig,
+          to: payload.userId,
+          language: lang,
+          logger
+        });
+      }
     }
   } catch (err) {
     logger.error("Webhook error", { message: err.message, data: err?.response?.data });
