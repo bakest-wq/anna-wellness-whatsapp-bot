@@ -42,17 +42,13 @@ async function processIncomingMessage({
     return;
   }
 
+  console.log("INCOMING TEXT:", payload.text);
+
   if (payload.isButton) {
-    console.log("BUTTON CLICK:", payload.buttonText);
+    console.log("BUTTON CLICK:", payload.buttonText, "| id:", payload.buttonId);
     logger.info("BUTTON CLICK", {
       buttonText: payload.buttonText,
       buttonId: payload.buttonId,
-      typeMessage: payload.typeMessage
-    });
-  } else {
-    logger.info("Incoming text", {
-      userId: payload.userId,
-      text: payload.text,
       typeMessage: payload.typeMessage
     });
   }

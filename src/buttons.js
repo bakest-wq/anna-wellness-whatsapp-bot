@@ -108,31 +108,9 @@ function resolveNumericMenu(text) {
   return null;
 }
 
-const INDEX_TO_INTENT = ["price", "booking", "address", "contraindications"];
-
 function resolveButtonIntent(buttonId, buttonText) {
   if (buttonId && ID_TO_INTENT[buttonId]) return ID_TO_INTENT[buttonId];
-
-  if (buttonId !== null && buttonId !== undefined && /^[0-3]$/.test(String(buttonId))) {
-    return INDEX_TO_INTENT[parseInt(buttonId, 10)];
-  }
-
-  const numeric = resolveNumericMenu(buttonText || buttonId);
-  if (numeric) return numeric;
-
-  const t = String(buttonText || "").toLowerCase().trim();
-  for (const map of [TEXT_TO_INTENT.ru, TEXT_TO_INTENT.kz]) {
-    for (const [key, intent] of Object.entries(map)) {
-      if (t.includes(key)) return intent;
-    }
-  }
-
-  if (/цен|баға|price/i.test(t)) return "price";
-  if (/запис|жазыл|book/i.test(t)) return "booking";
-  if (/адрес|мекен|қайда/i.test(t)) return "address";
-  if (/против|қарсы/i.test(t)) return "contraindications";
-
-  return null;
+  return resolveNumericMenu(buttonText);
 }
 
 function getBookingCta(language) {
