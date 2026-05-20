@@ -1,151 +1,131 @@
-const BOOKING_PATTERNS = [
-  /\b(хочу|можно|могу|нужно|надо)\s+(запис|забронир|попасть|прийти|приехать)/i,
-  /\b(запиш|записать|записаться|запись|бронь|бронир)/i,
-  /\b(свободн|есть\s+мест|есть\s+время).*(запис|сегодня|завтра)/i,
-  /\b(жазыл|жазылу|жазылғым|жазылғым\s+келеді|жазылғым\s+келе)/i,
-  /\b(уақыт\s+бар\s+ма|бос\s+уақыт|орын\s+бар\s+ма)/i,
-  /\b(book|booking|appointment)\b/i
-];
-
-const BOOKING_KEYWORDS = {
-  ru: [
-    { word: "записаться", weight: 4 },
-    { word: "запись", weight: 3 },
-    { word: "запишите", weight: 4 },
-    { word: "записать", weight: 3 },
-    { word: "забронировать", weight: 4 },
-    { word: "бронь", weight: 3 },
-    { word: "хочу запис", weight: 4 },
-    { word: "можно запис", weight: 3 },
-    { word: "свободное время", weight: 2 },
-    { word: "есть место", weight: 2 },
-    { word: "на завтра", weight: 1 },
-    { word: "на сегодня", weight: 1 }
-  ],
-  kz: [
-    { word: "жазылу", weight: 4 },
-    { word: "жазылғым", weight: 4 },
-    { word: "жазылғым келеді", weight: 5 },
-    { word: "жазып", weight: 3 },
-    { word: "жазып қойыңыз", weight: 4 },
-    { word: "жазылуға", weight: 4 },
-    { word: "бос уақыт", weight: 2 },
-    { word: "орын бар ма", weight: 2 },
-    { word: "ертеңге", weight: 1 },
-    { word: "бүгінге", weight: 1 }
-  ]
+const INTENT_RULES = {
+  booking: {
+    patterns: [
+      /\b(хочу|можно|могу|нужно|надо)\s+(запис|забронир|попасть)/i,
+      /\b(запиш|записать|записаться|запись|бронь|бронир)/i,
+      /\b(жазыл|жазылу|жазылғым|жазылғым\s+келеді)/i,
+      /\b(уақыт\s+бар\s+ма|бос\s+уақыт|орын\s+бар\s+ма)/i
+    ],
+    keywords: {
+      ru: ["записаться", "запись", "забронировать", "хочу запис", "свободное время"],
+      kz: ["жазылу", "жазылғым", "жазылғым келеді", "жазып қойыңыз"]
+    },
+    weight: 4
+  },
+  price: {
+    patterns: [/\b(цен|стоим|прайс|сколько\s+стоит|бағасы|қанша\s+тұрады)/i],
+    keywords: {
+      ru: ["цена", "стоимость", "сколько стоит", "прайс"],
+      kz: ["бағасы", "қанша", "баға"]
+    },
+    weight: 3
+  },
+  five_continents: {
+    patterns: [
+      /\b(5\s*континент|пять\s*континент|континент)/i,
+      /\b(отпен|бамбук|банка)/i
+    ],
+    keywords: {
+      ru: ["5 континент", "пять континент", "массаж 5", "с огнем", "бамбук"],
+      kz: ["5 континент", "континент", "отпен", "бамбук"]
+    },
+    weight: 3
+  },
+  address: {
+    patterns: [/\b(адрес|где\s+наход|как\s+доехать|қайда|орналасқан|мекенжай)/i],
+    keywords: {
+      ru: ["адрес", "где вы", "как проехать", "где находитесь"],
+      kz: ["мекенжай", "қайда", "орналасқан"]
+    },
+    weight: 3
+  },
+  contraindications: {
+    patterns: [
+      /\b(противопоказан|можно\s+ли\s+при|беременн|температур)/i,
+      /\b(қарсы\s+көрсетілім|жүктілік)/i
+    ],
+    keywords: {
+      ru: ["противопоказания", "можно ли", "беременность", "болезнь"],
+      kz: ["қарсы көрсетілім", "жүктілік", "ауру"]
+    },
+    weight: 3
+  },
+  services: {
+    patterns: [/\b(услуг|практик|что\s+есть|қызмет|практика)/i],
+    keywords: {
+      ru: ["услуги", "практики", "что есть", "какие практики", "mukaino", "earthflow", "access bars"],
+      kz: ["қызмет", "практика", "не бар"]
+    },
+    weight: 2
+  },
+  schedule: {
+    patterns: [/\b(график|режим|когда\s+работ|жұмыс\s+уақыты|со\s+скольки)/i],
+    keywords: {
+      ru: ["график", "во сколько", "когда работаете", "до скольки"],
+      kz: ["жұмыс уақыты", "қашан жұмыс"]
+    },
+    weight: 2
+  },
+  greeting: {
+    patterns: [/\b(привет|здравств|добрый|сәлем|салем|hello|hi)\b/i],
+    keywords: {
+      ru: ["привет", "здравствуйте", "добрый день", "добрый вечер"],
+      kz: ["сәлем", "салем", "сәлеметсіз бе"]
+    },
+    weight: 2
+  }
 };
 
-const NEGATIVE_PATTERNS = [
-  /\b(не\s+хочу|не\s+надо|отмен|болезн|диагноз|лечени)/i,
-  /\b(жазылмаймын|керек\s+емес)/i
-];
-
-function scoreKeywords(text, language) {
+function scoreIntent(text, language, intentName, rule) {
   const t = String(text || "").toLowerCase();
-  const lists = [BOOKING_KEYWORDS.ru, BOOKING_KEYWORDS.kz];
-  if (language === "kz") lists.unshift(BOOKING_KEYWORDS.kz);
-  else lists.unshift(BOOKING_KEYWORDS.ru);
-
   let score = 0;
-  for (const list of lists) {
-    for (const item of list) {
-      if (t.includes(item.word)) score += item.weight;
-    }
-  }
-  return score;
-}
 
-function scorePatterns(text) {
-  const t = String(text || "");
-  let score = 0;
-  for (const pattern of BOOKING_PATTERNS) {
+  for (const pattern of rule.patterns || []) {
     if (pattern.test(t)) score += 3;
   }
-  for (const pattern of NEGATIVE_PATTERNS) {
-    if (pattern.test(t)) score -= 4;
+
+  const kw = rule.keywords?.[language] || [];
+  const kwAlt = rule.keywords?.[language === "kz" ? "ru" : "kz"] || [];
+  for (const word of [...kw, ...kwAlt]) {
+    if (t.includes(word.toLowerCase())) score += 2;
   }
-  return score;
+
+  return score * (rule.weight || 1) / 4;
 }
 
-function detectBookingIntentLocal(text, language) {
-  const keywordScore = scoreKeywords(text, language);
-  const patternScore = scorePatterns(text);
-  const total = keywordScore + patternScore;
+function detectClientIntent(text, language) {
+  const scores = {};
+
+  for (const [intent, rule] of Object.entries(INTENT_RULES)) {
+    scores[intent] = scoreIntent(text, language, intent, rule);
+  }
+
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const [topIntent, topScore] = sorted[0];
+  const [, secondScore] = sorted[1] || ["general", 0];
+
+  const intent = topScore >= 2 && topScore > secondScore + 0.5 ? topIntent : "general";
 
   return {
-    isBooking: total >= 3,
-    confidence: Math.min(1, Math.max(0, total / 8)),
-    score: total,
-    source: "local"
-  };
-}
-
-async function detectBookingIntentWithAi(openai, text, language) {
-  const completion = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    temperature: 0,
-    max_tokens: 20,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          'Определи намерение клиента wellness-салона. Ответь JSON: {"booking_intent": true|false, "confidence": 0..1}. booking_intent=true только если клиент хочет записаться/забронировать/узнать свободное время для визита.'
-      },
-      {
-        role: "user",
-        content: `Язык: ${language}. Сообщение: ${text}`
-      }
-    ]
-  });
-
-  const raw = completion.choices?.[0]?.message?.content || "{}";
-  const parsed = JSON.parse(raw);
-  return {
-    isBooking: Boolean(parsed.booking_intent),
-    confidence: Number(parsed.confidence) || 0.5,
-    score: parsed.booking_intent ? 5 : 0,
-    source: "openai"
+    intent,
+    confidence: Math.min(1, topScore / 6),
+    scores
   };
 }
 
 async function detectBookingIntent({ text, language, openai, logger }) {
-  const local = detectBookingIntentLocal(text, language);
-
-  if (local.isBooking && local.confidence >= 0.45) {
-    logger?.debug?.("Booking intent detected (local)", local);
-    return local;
-  }
-
-  if (!local.isBooking && local.score <= 0) {
-    return local;
-  }
-
-  const useAi = process.env.BOOKING_INTENT_AI === "true" && openai;
-  if (!useAi) {
-    return local;
-  }
-
-  try {
-    const ai = await detectBookingIntentWithAi(openai, text, language);
-    const merged = {
-      isBooking: ai.isBooking || local.isBooking,
-      confidence: Math.max(local.confidence, ai.confidence),
-      score: Math.max(local.score, ai.score),
-      source: ai.isBooking ? "openai+local" : local.source
-    };
-    logger?.debug?.("Booking intent detected (merged)", merged);
-    return merged;
-  } catch (err) {
-    logger?.warn?.("AI intent detection failed, fallback to local", {
-      error: err.message
-    });
-    return local;
-  }
+  const result = detectClientIntent(text, language);
+  return {
+    isBooking: result.intent === "booking" && result.confidence >= 0.35,
+    confidence: result.intent === "booking" ? result.confidence : 0,
+    score: result.scores?.booking || 0,
+    source: "local",
+    intent: result.intent
+  };
 }
 
 module.exports = {
+  detectClientIntent,
   detectBookingIntent,
-  detectBookingIntentLocal
+  INTENT_RULES
 };

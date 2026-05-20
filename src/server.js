@@ -5,9 +5,12 @@ const axios = require("axios");
 const OpenAI = require("openai");
 
 const { logger } = require("./logger");
-const { detectBookingIntent } = require("./intent");
+const { detectClientIntent, detectBookingIntent } = require("./intent");
 const { verifyWhatsAppCloudSignature, verifyGreenWebhook } = require("./webhookAuth");
 const { persistLead } = require("./sheets");
+const { SALON, SERVICES, FAQ } = require("./knowledge");
+const { getScenarioResponse } = require("./responses");
+const { buildSystemPrompt } = require("./prompt");
 
 const app = express();
 
@@ -38,51 +41,6 @@ const openai = new OpenAI({
 });
 
 const sessions = new Map();
-
-const SERVICES = [
-  { name: "Массаж 5 континентов", duration: "2-2,5 часа", price: "30 000 ₸" },
-  { name: "Массаж 5 континентов с огнем", duration: "2-2,5 часа", price: "35 000 ₸" },
-  { name: "Массаж 5 континентов с бамбуковыми банками", duration: "2-2,5 часа", price: "33 000 ₸" },
-  { name: "Mukaino M-Test", duration: "30-40 минут", price: "10 000 ₸" },
-  { name: "Дыхательная практика", duration: "1 час", price: "20 000 ₸" },
-  { name: "EarthFlow", duration: "1 час", price: "20 000 ₸" },
-  { name: "Access Bars", duration: "1 час", price: "15 000 ₸" }
-];
-
-const FAQ = {
-  fiveContinents: [
-    "Что это? Глубокая wellness-практика с сочетанием мягких и динамичных техник по телу.",
-    "Сколько длится? Обычно 2-2,5 часа.",
-    "Для чего? Для расслабления, восстановления ресурса и снятия общего напряжения.",
-    "Это не лечебная процедура и не заменяет консультацию врача."
-  ],
-  mukaino: [
-    "Mukaino M-Test - мягкая телесная диагностическая оценка движения и баланса.",
-    "Длительность: 30-40 минут.",
-    "Помогает подобрать комфортный формат последующих практик."
-  ],
-  microcorn: [
-    "Microcorn - локальная эстетическая/уходовая работа с зоной сухих уплотнений.",
-    "План и частота определяются индивидуально после осмотра специалиста.",
-    "При выраженной боли, воспалении или сомнениях лучше сначала обратиться к врачу."
-  ],
-  contraindications: [
-    "Острые воспалительные состояния и температура.",
-    "Тяжелые обострения хронических состояний.",
-    "Свежие травмы, кровотечения, послеоперационный ранний период.",
-    "Беременность и другие состояния обсуждаются индивидуально."
-  ],
-  preparation: [
-    "За 1,5-2 часа не переедать.",
-    "Пить воду в течение дня.",
-    "Надеть комфортную одежду и сообщить о противопоказаниях заранее."
-  ],
-  afterSession: [
-    "После сеанса чаще всего ощущаются расслабление и легкость.",
-    "Возможна сонливость и потребность в восстановлении.",
-    "Рекомендуется вода, спокойный режим и без интенсивных нагрузок в день практики."
-  ]
-};
 
 function normalizePhone(phone) {
   return String(phone || "").replace(/[^\d+]/g, "");
@@ -143,20 +101,20 @@ function nextBookingQuestion(booking) {
   const q = {
     ru: {
       name: "Подскажите, пожалуйста, как к вам обращаться?",
-      phone: "Оставьте, пожалуйста, ваш номер телефона для подтверждения записи.",
-      service: "На какую практику хотите записаться?",
+      phone: "Благодарю 🌿 Оставьте, пожалуйста, номер телефона для подтверждения.",
+      service: "На какую практику записать вас?",
       day: "На какой день вам удобно?",
-      time: "Какое время вам комфортно? Работаем с 09:00 до 22:00, последняя запись в 20:00.",
+      time: "Какое время комфортно? Работаем 09:00–22:00, последняя запись — в 20:00.",
       contraindications:
-        "Подскажите, пожалуйста, есть ли противопоказания или состояния, о которых важно знать?"
+        "Есть ли противопоказания или состояния, о которых важно знать заранее?"
     },
     kz: {
       name: "Өзіңізді қалай атаймыз?",
-      phone: "Жазылуды растау үшін телефон нөміріңізді қалдырыңызшы.",
-      service: "Қай практикаға жазылғыңыз келеді?",
+      phone: "Рахмет 🌿 Растау үшін телефон нөміріңізді қалдырыңызшы.",
+      service: "Қай практикаға жазайын?",
       day: "Қай күн ыңғайлы?",
-      time: "Қай уақыт ыңғайлы? Жұмыс уақыты: 09:00-22:00, соңғы жазылу 20:00.",
-      contraindications: "Қарсы көрсетілімдер немесе ескеру керек жағдайлар бар ма?"
+      time: "Қай уақыт ыңғайлы? 09:00–22:00, соңғы жазылу — 20:00.",
+      contraindications: "Алдын ала білу керек қарсы көрсетілімдер немесе ерекше жағдайлар бар ма?"
     }
   };
 
@@ -206,51 +164,45 @@ function parseBookingStep(booking, message) {
   }
 }
 
-async function getAiReply({ text, language, history }) {
-  const servicesText = SERVICES.map(
-    (s, i) => `${i + 1}. ${s.name} - ${s.duration} - ${s.price}`
-  ).join("\n");
+const SCENARIO_INTENTS = [
+  "greeting",
+  "price",
+  "five_continents",
+  "address",
+  "contraindications",
+  "services",
+  "schedule"
+];
 
-  const systemPrompt = `
-Вы - AI-администратор премиального wellness-салона мастера Анны Абдулрашидовны в Актобе.
-Общаетесь мягко, женственно, спокойно, заботливо, на "вы", коротко.
-Никогда не давите на клиента.
-Сначала уточняете запрос, потом мягко ведете к записи.
+function getScenarioByIntent(intent, language) {
+  if (!SCENARIO_INTENTS.includes(intent)) return null;
+  return getScenarioResponse(intent, language);
+}
 
-Язык ответа:
-- если язык клиента русский -> отвечайте на русском.
-- если язык клиента казахский -> отвечайте на казахском.
-
-Запрещено:
-- обещать лечение болезней
-- ставить диагнозы
-- говорить "мы вас вылечим"
-- давать медицинские гарантии
-
-Адрес: Актобе, район Батыс, Ораз Татеулы 15
-График: 09:00-22:00, последняя запись в 20:00
-
-Услуги:
-${servicesText}
-`;
-
+async function getAiReply({ text, language, history, intent }) {
   const messages = [
-    { role: "system", content: systemPrompt },
-    ...history.slice(-8).map((h) => ({ role: h.role, content: h.content })),
+    { role: "system", content: buildSystemPrompt() },
+    ...history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
     {
       role: "user",
-      content: `Язык клиента: ${language}. Сообщение клиента: ${text}`
+      content: `Язык: ${language}. Намерение: ${intent}. Сообщение: ${text}\n\nОтветьте коротко (до 4 предложений), тепло, на «вы». Завершите мягким вопросом. Мягко предложите запись, если уместно.`
     }
   ];
 
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
-    temperature: 0.6,
-    max_tokens: 220,
+    temperature: 0.45,
+    max_tokens: 160,
     messages
   });
 
-  return completion.choices?.[0]?.message?.content?.trim() || "";
+  let reply = completion.choices?.[0]?.message?.content?.trim() || "";
+
+  reply = reply
+    .replace(/я\s+(бот|ии|искусственный\s+интеллект|ai)/gi, "я администратор")
+    .replace(/мы\s+вас\s+вылечим/gi, "мы поможем вам восстановить ресурс");
+
+  return reply;
 }
 
 function buildAdminLead(booking, clientPhone, language) {
@@ -427,21 +379,6 @@ async function handleIncomingMessage(userId, text) {
   session.language = detectLanguage(text) || session.language || "ru";
   const language = session.language;
 
-  if (!session.booking) {
-    const intent = await detectBookingIntent({
-      text,
-      language,
-      openai,
-      logger
-    });
-
-    if (intent.isBooking) {
-      logger.info("Booking flow started", { userId, intent });
-      session.booking = initBooking(language);
-      return nextBookingQuestion(session.booking);
-    }
-  }
-
   if (session.booking?.active) {
     parseBookingStep(session.booking, text);
 
@@ -451,14 +388,46 @@ async function handleIncomingMessage(userId, text) {
       await notifyAdmin(lead);
       session.booking = null;
       logger.info("Booking completed", { userId, phone: lead.payload.phone });
-      return "Благодарю вас 🌿 Я передам вашу заявку администратору. Вам напишут и подтвердят удобное время.";
+      return getScenarioResponse("booking_complete", language);
     }
 
     return nextBookingQuestion(session.booking);
   }
 
+  const clientIntent = detectClientIntent(text, language);
+  logger.info("Client intent", { userId, intent: clientIntent.intent, confidence: clientIntent.confidence });
+
+  const bookingCheck = await detectBookingIntent({ text, language, openai, logger });
+  const intent =
+    bookingCheck.isBooking || clientIntent.intent === "booking" ? "booking" : clientIntent.intent;
+
+  if (intent === "booking") {
+    session.booking = initBooking(language);
+    logger.info("Booking flow started", { userId });
+    return getScenarioResponse("booking_start", language);
+  }
+
+  const scenarioReply = getScenarioByIntent(intent, language);
+  if (scenarioReply && intent !== "general") {
+    session.history.push({ role: "user", content: text });
+    session.history.push({ role: "assistant", content: scenarioReply });
+    return scenarioReply;
+  }
+
+  if (!session.history.length) {
+    session.history.push({ role: "user", content: text });
+    const greeting = getScenarioResponse("greeting", language);
+    session.history.push({ role: "assistant", content: greeting });
+    return greeting;
+  }
+
   session.history.push({ role: "user", content: text });
-  const aiText = await getAiReply({ text, language, history: session.history });
+  const aiText = await getAiReply({
+    text,
+    language,
+    history: session.history,
+    intent: clientIntent.intent
+  });
   session.history.push({ role: "assistant", content: aiText });
   return aiText;
 }
@@ -477,8 +446,9 @@ app.get("/faq", (_, res) => {
 
 app.get("/services", (_, res) => {
   res.json({
-    address: "Актобе, район Батыс, Ораз Татеулы 15",
-    schedule: "09:00-22:00 (последняя запись 20:00)",
+    master: SALON.master,
+    address: SALON.address,
+    schedule: `${SALON.schedule} (последняя запись ${SALON.lastBooking})`,
     services: SERVICES
   });
 });
