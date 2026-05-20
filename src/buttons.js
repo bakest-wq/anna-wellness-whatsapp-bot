@@ -79,11 +79,15 @@ function getTextMenuFallback(language) {
 const TEXT_TO_INTENT = {
   ru: {
     "узнать цены": "price",
+    "💰 узнать цены": "price",
     "цены": "price",
     "записаться": "booking",
+    "📅 записаться": "booking",
     "запись": "booking",
     "адрес": "address",
-    "противопоказания": "contraindications"
+    "📍 адрес": "address",
+    "противопоказания": "contraindications",
+    "⚠️ противопоказания": "contraindications"
   },
   kz: {
     "бағалар": "price",
@@ -104,8 +108,14 @@ function resolveNumericMenu(text) {
   return null;
 }
 
+const INDEX_TO_INTENT = ["price", "booking", "address", "contraindications"];
+
 function resolveButtonIntent(buttonId, buttonText) {
   if (buttonId && ID_TO_INTENT[buttonId]) return ID_TO_INTENT[buttonId];
+
+  if (buttonId !== null && buttonId !== undefined && /^[0-3]$/.test(String(buttonId))) {
+    return INDEX_TO_INTENT[parseInt(buttonId, 10)];
+  }
 
   const numeric = resolveNumericMenu(buttonText || buttonId);
   if (numeric) return numeric;

@@ -8,17 +8,8 @@ const { logger } = require("./logger");
 const { verifyWhatsAppCloudSignature, verifyGreenWebhook } = require("./webhookAuth");
 const { persistLead } = require("./sheets");
 const { SALON, SERVICES, FAQ } = require("./knowledge");
-const { handleIncomingMessage } = require("./conversation");
-const { detectLanguage } = require("./language");
-const { getSession } = require("./sessionStore");
-const {
-  parseIncomingFromGreen,
-  parseIncomingFromCloud,
-  sendWhatsApp,
-  sendMainMenuButtons,
-  sendTextMenuFallback
-} = require("./whatsapp");
-const { isDuplicate } = require("./messageDedup");
+const { processIncomingMessage } = require("./incomingMessage");
+const { parseIncomingFromGreen, sendWhatsApp } = require("./whatsapp");
 
 const app = express();
 
@@ -89,77 +80,23 @@ async function processWebhook(req, res) {
     if (WEBHOOK_REQUIRE_SIGNATURE) return res.sendStatus(401);
   }
 
+  logger.info("Webhook received", {
+    path: req.path,
+    typeWebhook: req.body?.typeWebhook,
+    typeMessage: req.body?.messageData?.typeMessage
+  });
+
   res.sendStatus(200);
 
   try {
-    const payload =
-      WHATSAPP_PROVIDER === "green"
-        ? parseIncomingFromGreen(req.body)
-        : parseIncomingFromCloud(req.body);
-
-    if (!payload?.text || !payload?.userId) return;
-
-    if (isDuplicate(payload.messageId)) {
-      logger.debug("Duplicate message skipped", { messageId: payload.messageId });
-      return;
-    }
-
-    logger.info("Incoming message", {
-      userId: payload.userId,
-      text: payload.text,
-      messageId: payload.messageId
+    await processIncomingMessage({
+      body: req.body,
+      waConfig,
+      openai,
+      model: OPENAI_MODEL,
+      notifyAdmin,
+      webhookTestReply: WEBHOOK_TEST_REPLY
     });
-
-    let result;
-
-    if (WEBHOOK_TEST_REPLY) {
-      result = { reply: null, withMenu: true };
-    } else {
-      result = await handleIncomingMessage({
-        userId: payload.userId,
-        text: payload.text,
-        buttonId: payload.buttonId,
-        buttonText: payload.buttonText,
-        isButton: payload.isButton,
-        openai,
-        model: OPENAI_MODEL,
-        logger,
-        notifyAdmin
-      });
-    }
-
-    const reply = result?.reply || (typeof result === "string" ? result : null);
-
-    if (reply) {
-      await sendWhatsApp({
-        config: waConfig,
-        to: payload.userId,
-        text: reply,
-        logger
-      });
-      logger.info("Reply sent", { userId: payload.userId, preview: String(reply).slice(0, 90) });
-    }
-
-    if (result?.withMenu) {
-      const session = getSession(payload.userId);
-      const lang = session.language || detectLanguage(payload.text);
-
-      if (waConfig.provider === "green") {
-        await sendMainMenuButtons({
-          config: waConfig,
-          to: payload.userId,
-          language: lang,
-          logger
-        });
-      } else {
-        await sendTextMenuFallback({
-          config: waConfig,
-          to: payload.userId,
-          language: lang,
-          logger
-        });
-      }
-    }
   } catch (err) {
     logger.error("Webhook error", { message: err.message, data: err?.response?.data });
     try {

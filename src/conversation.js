@@ -116,26 +116,6 @@ async function handleIncomingMessage({
     return { reply: result.reply };
   }
 
-  if (!session.booking?.active) {
-    const numericIntent = resolveNumericMenu(text);
-    if (numericIntent) {
-      logger.info("Text menu choice", { userId, choice: text.trim(), intent: numericIntent });
-      const result = await handleScenarioIntent(
-        numericIntent,
-        session,
-        userId,
-        text,
-        language,
-        notifyAdmin,
-        logger
-      );
-      pushHistory(session, "user", text);
-      pushHistory(session, "assistant", result.reply);
-      updateSession(userId, session);
-      return result;
-    }
-  }
-
   if (isButton) {
     const intent = resolveButtonIntent(buttonId, buttonText || text);
     logger.info("Button pressed", { userId, buttonId, buttonText, intent });
@@ -151,6 +131,26 @@ async function handleIncomingMessage({
         logger
       );
       pushHistory(session, "user", `[кнопка] ${buttonText || text}`);
+      pushHistory(session, "assistant", result.reply);
+      updateSession(userId, session);
+      return result;
+    }
+  }
+
+  if (!session.booking?.active) {
+    const numericIntent = resolveNumericMenu(text);
+    if (numericIntent) {
+      logger.info("Text menu choice", { userId, choice: text.trim(), intent: numericIntent });
+      const result = await handleScenarioIntent(
+        numericIntent,
+        session,
+        userId,
+        text,
+        language,
+        notifyAdmin,
+        logger
+      );
+      pushHistory(session, "user", text);
       pushHistory(session, "assistant", result.reply);
       updateSession(userId, session);
       return result;
