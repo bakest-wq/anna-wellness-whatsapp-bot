@@ -5,7 +5,7 @@ const ALIASES = [
   { id: "five_fire", patterns: [/огн|отпен|fire/i] },
   { id: "five_bamboo", patterns: [/бамбук|банк/i] },
   { id: "mukaino", patterns: [/mukaino|m-test|мукайно/i] },
-  { id: "breath", patterns: [/дыхат|тыныс/i] },
+  { id: "breath", patterns: [/дыхат|тыныс|дыхание\s*жизни|өмір\s*демі/i] },
   { id: "earthflow", patterns: [/earth\s*flow|эртфлоу/i] },
   { id: "bars", patterns: [/access\s*bars|барс/i] }
 ];

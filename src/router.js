@@ -1,6 +1,16 @@
 const { getScenarioResponse } = require("./responses");
 const { BUTTON_IDS } = require("./buttons");
 const { SALON } = require("./knowledge");
+const {
+  getFiveContinentsDifference,
+  isFiveContinentsComparisonQuestion
+} = require("./content/fiveContinentsDifference");
+const {
+  getBreathingLifeInfo,
+  getBreathingGayaEarthflowInfo,
+  isBreathingLifeQuestion,
+  isBreathingGayaEarthflowQuestion
+} = require("./content/breathingLife");
 
 const EXACT_MENU_RU = {
   "узнать цены": "price",
@@ -64,6 +74,21 @@ function routeIncomingText(text, buttonId) {
     return routeName;
   }
 
+  if (isFiveContinentsComparisonQuestion(raw)) {
+    console.log("ROUTE:", "five_comparison");
+    return "five_comparison";
+  }
+
+  if (isBreathingGayaEarthflowQuestion(raw)) {
+    console.log("ROUTE:", "breathing_gaya_earthflow");
+    return "breathing_gaya_earthflow";
+  }
+
+  if (isBreathingLifeQuestion(raw)) {
+    console.log("ROUTE:", "breathing_life");
+    return "breathing_life";
+  }
+
   console.log("ROUTE:", "none");
   return null;
 }
@@ -83,6 +108,15 @@ function getRouteReply(routeName, language) {
 
     case "contraindications":
       return getScenarioResponse("contraindications", language);
+
+    case "five_comparison":
+      return getFiveContinentsDifference(language);
+
+    case "breathing_life":
+      return getBreathingLifeInfo(language);
+
+    case "breathing_gaya_earthflow":
+      return getBreathingGayaEarthflowInfo(language);
 
     default:
       return null;
