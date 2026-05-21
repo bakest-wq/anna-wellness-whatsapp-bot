@@ -98,6 +98,10 @@ const MENU_CONTEXTS = {
     type: "practice_picker",
     maxChoice: 8
   },
+  booking_service: {
+    type: "practice_picker",
+    maxChoice: 8
+  },
   after_practice_detail: {
     items: ["booking", "contra", "practices_more", "back"],
     maxChoice: 4
@@ -159,7 +163,7 @@ const ROUTE_TO_MENU = {
   breathing_gaya_earthflow: "after_practices",
   five_continents: "after_practices",
   back: "main",
-  booking: "main",
+  booking: "booking_service",
   greeting: "main",
   thanks: "main"
 };
@@ -182,7 +186,7 @@ function getContextItems(context) {
 function buildMenuBlock(language, context, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
 
-  if (context === "practices_picker") {
+  if (context === "practices_picker" || context === "booking_service") {
     const buttons = [
       ...PRACTICE_PICKER.map((p) => ({
         buttonId: p.buttonId,
@@ -223,7 +227,7 @@ function buildMenuBlock(language, context, options = {}) {
 function getMenuTextBlock(language, context = "main") {
   const lang = language === "kz" ? "kz" : "ru";
 
-  if (context === "practices_picker") {
+  if (context === "practices_picker" || context === "booking_service") {
     return getPracticePickerMenuBlock(language);
   }
 
@@ -341,7 +345,7 @@ function parseNumericChoice(text, menuContext) {
 
   const n = Number(digit[1]);
 
-  if (menuContext === "practices_picker") {
+  if (menuContext === "practices_picker" || menuContext === "booking_service") {
     if (n === 8) return "back";
     return PRACTICE_PICKER[n - 1]?.route || null;
   }
@@ -357,7 +361,7 @@ function parseNumericChoice(text, menuContext) {
 function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
   if (buttonId && ID_TO_ROUTE[buttonId]) return ID_TO_ROUTE[buttonId];
 
-  if (menuContext === "practices_picker") {
+  if (menuContext === "practices_picker" || menuContext === "booking_service") {
     const picked = resolvePracticePickerChoice(buttonText, buttonId);
     if (picked) return picked;
   }
@@ -373,7 +377,7 @@ function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
   const withSuffix = raw.match(new RegExp(`^([1-${max}])[️⃣]?[\\s.)-–]`, "u"));
   if (withSuffix) {
     const n = Number(withSuffix[1]);
-    if (menuContext === "practices_picker") {
+    if (menuContext === "practices_picker" || menuContext === "booking_service") {
       if (n === 8) return "back";
       return PRACTICE_PICKER[n - 1]?.route || null;
     }

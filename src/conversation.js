@@ -3,7 +3,12 @@ const { resolveClientLanguage, normalizeLanguage } = require("./language");
 const { getScenarioResponse } = require("./responses");
 const { getAiReply } = require("./ai");
 const { getSession, updateSession } = require("./sessionStore");
-const { initBooking, processBookingMessage, buildLead } = require("./booking");
+const {
+  initBooking,
+  processBookingMessage,
+  buildLead,
+  getBookingStartOutbound
+} = require("./booking");
 const { isCancellation } = require("./validators");
 const { routeIncomingText, getRouteReply, wrapOutbound } = require("./router");
 const { getReturningGreeting } = require("./brand");
@@ -63,12 +68,41 @@ function emotionalOutbound(incomingText, language, session, options = {}) {
   };
 }
 
-function bookingOutbound(reply) {
+function bookingOutbound(reply, options = {}) {
+  const skipMenu = options.skipMenu !== false;
+  const menuContext =
+    options.menuContext !== undefined
+      ? options.menuContext
+      : skipMenu
+        ? "main"
+        : "booking_service";
+
   return {
     reply,
     messages: [{ type: "text", text: reply }],
-    skipMenu: true
+    skipMenu,
+    menuContext
   };
+}
+
+function wrapBookingResult(result, session) {
+  if (result.cancelled || result.done) {
+    return bookingOutbound(result.reply, { skipMenu: false, menuContext: "main" });
+  }
+
+  if (session.booking?.active && session.booking.step === "service") {
+    return bookingOutbound(result.reply, {
+      skipMenu: false,
+      menuContext: "booking_service"
+    });
+  }
+
+  return bookingOutbound(result.reply, { skipMenu: true, menuContext: "main" });
+}
+
+function startBooking(session, language) {
+  session.booking = initBooking(language);
+  return getBookingStartOutbound(language);
 }
 
 async function handleIncomingMessage({
@@ -113,17 +147,17 @@ async function handleIncomingMessage({
   }
 
   if (session.booking?.active) {
-    const result = processBookingMessage(session.booking, incomingText, language);
+    const result = processBookingMessage(session.booking, incomingText, language, {
+      buttonId,
+      buttonText,
+      isButton
+    });
 
     if (result.cancelled) {
       session.booking = null;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
-      return finish(session, userId, {
-        ...bookingOutbound(result.reply),
-        menuContext: "main",
-        skipMenu: false
-      });
+      return finish(session, userId, wrapBookingResult(result, session));
     }
 
     if (result.done) {
@@ -137,16 +171,12 @@ async function handleIncomingMessage({
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       logger.info("Booking completed", { userId, service: lead.payload.service });
-      return finish(session, userId, {
-        reply: result.reply,
-        messages: [{ type: "text", text: result.reply }],
-        menuContext: "main"
-      });
+      return finish(session, userId, wrapBookingResult(result, session));
     }
 
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", result.reply);
-    return finish(session, userId, bookingOutbound(result.reply));
+    return finish(session, userId, wrapBookingResult(result, session));
   }
 
   const routeName = routeIncomingText(incomingText, buttonId, menuContext);
@@ -201,12 +231,11 @@ async function handleIncomingMessage({
         pushHistory(session, "assistant", outbound.reply);
         return finish(session, userId, outbound);
       }
-      session.booking = initBooking(language);
-      const startText = getScenarioResponse("booking_start", language);
+      const outbound = startBooking(session, language);
       pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
-      pushHistory(session, "assistant", startText);
+      pushHistory(session, "assistant", outbound.reply);
       logger.info("Routed by menu", { userId, routeName, isButton });
-      return finish(session, userId, bookingOutbound(startText));
+      return finish(session, userId, outbound);
     }
 
     let routeReply = getRouteReply(routeName, language);
@@ -255,11 +284,10 @@ async function handleIncomingMessage({
   });
 
   if (clientIntent.intent === "booking") {
-    session.booking = initBooking(language);
-    const startText = getScenarioResponse("booking_start", language);
+    const outbound = startBooking(session, language);
     pushHistory(session, "user", incomingText);
-    pushHistory(session, "assistant", startText);
-    return finish(session, userId, bookingOutbound(startText));
+    pushHistory(session, "assistant", outbound.reply);
+    return finish(session, userId, outbound);
   }
 
   if (clientIntent.intent === "address") {

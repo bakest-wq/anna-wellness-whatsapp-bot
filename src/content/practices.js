@@ -225,11 +225,33 @@ function getServiceMeta(id) {
   return SERVICES.find((s) => s.id === id);
 }
 
+const ROUTE_TO_PRACTICE_ID = {
+  practice_five: "five",
+  practice_five_fire: "five_fire",
+  practice_five_bamboo: "five_bamboo",
+  practice_mukaino: "mukaino",
+  practice_breath: "breath",
+  practice_earthflow: "earthflow",
+  practice_bars: "bars"
+};
+
+function getServiceNameByPracticeId(practiceId) {
+  const svc = SERVICES.find((s) => s.id === practiceId);
+  return svc?.name || practiceId;
+}
+
 function getPracticesPickerIntro(language) {
   const lang = language === "kz" ? "kz" : "ru";
   return lang === "kz"
     ? "Қай практика туралы толығырақ білгіңіз келеді? 🌿"
     : "О какой практике хотите узнать подробнее? 🌿";
+}
+
+function getBookingServiceIntro(language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  return lang === "kz"
+    ? "Қуанышпен 🤍\nПрактиканы таңдаңызшы:"
+    : "С удовольствием 🤍\nВыберите, пожалуйста, практику:";
 }
 
 function getPracticePickerMenuBlock(language) {
@@ -336,6 +358,29 @@ function resolvePracticePickerChoice(text, buttonId) {
   return null;
 }
 
+function resolveBookingServiceChoice(text, buttonId) {
+  const route = resolvePracticePickerChoice(text, buttonId);
+  if (route === "back") return { cancelled: true };
+  if (route && ROUTE_TO_PRACTICE_ID[route]) {
+    return { practiceId: ROUTE_TO_PRACTICE_ID[route] };
+  }
+
+  const raw = String(text || "").trim().toLowerCase();
+  if (/access\s*bars|accessbars|барс/i.test(raw)) {
+    return { practiceId: "bars" };
+  }
+
+  for (const p of PRACTICE_PICKER) {
+    const ru = p.labelRu.toLowerCase();
+    const kz = p.labelKz.toLowerCase();
+    if (raw.includes(ru) || raw.includes(kz) || raw === p.id) {
+      return { practiceId: p.id };
+    }
+  }
+
+  return null;
+}
+
 function registerPracticeLabels(labelMap, normalizeLabel) {
   for (const p of PRACTICE_PICKER) {
     labelMap[normalizeLabel(p.labelRu)] = p.route;
@@ -352,11 +397,15 @@ function registerPracticeLabels(labelMap, normalizeLabel) {
 module.exports = {
   PRACTICE_PICKER,
   PRACTICE_ROUTES,
+  ROUTE_TO_PRACTICE_ID,
   getPracticesPickerIntro,
+  getBookingServiceIntro,
   getPracticePickerMenuBlock,
   getPracticesPickerReply,
   getPracticeDetailReply,
   resolvePracticePickerChoice,
+  resolveBookingServiceChoice,
+  getServiceNameByPracticeId,
   registerPracticeLabels,
   formatPracticeDetail
 };

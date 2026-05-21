@@ -1,6 +1,11 @@
 const { getScenarioResponse } = require("./responses");
+const { SERVICES } = require("./knowledge");
 const { matchService } = require("./serviceMatcher");
-const { servicesListText } = require("./knowledge");
+const {
+  getBookingServiceIntro,
+  resolveBookingServiceChoice,
+  getServiceNameByPracticeId
+} = require("./content/practices");
 const {
   normalizePhone,
   isValidPhone,
@@ -8,17 +13,18 @@ const {
   isCancellation
 } = require("./validators");
 
-const STEPS = ["service", "day", "time", "phone"];
+const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
-function initBooking(language) {
-  return {
+function initBooking(language, preselectedPracticeId = null) {
+  const booking = {
     active: true,
-    step: "service",
+    step: preselectedPracticeId ? "day" : "service",
     startedAt: Date.now(),
     data: {
       name: "",
       phone: "",
       service: "",
+      serviceId: "",
       day: "",
       time: "",
       contraindications: "",
@@ -26,25 +32,49 @@ function initBooking(language) {
     },
     language
   };
+
+  if (preselectedPracticeId) {
+    booking.data.serviceId = preselectedPracticeId;
+    booking.data.service = getServiceNameByPracticeId(preselectedPracticeId);
+  }
+
+  return booking;
 }
 
 function nextQuestion(booking) {
   const lang = booking.language === "kz" ? "kz" : "ru";
   const q = {
     ru: {
-      service: `Какая практика вам ближе по ощущению? 🌿\n\nМожно не спешить.\n\n${servicesListText("ru")}`,
-      day: "На какой день вам было бы спокойно прийти?",
-      time: "Какое время комфортно? Принимаем с 09:00 до 22:00 — без спешки.",
-      phone: "Когда будете готовы — оставьте номер для мягкого подтверждения 🤍\n\nФормат: +7XXXXXXXXXX"
+      service: getBookingServiceIntro("ru"),
+      day: "На какой день вам было бы спокойно прийти? 🌿\n\nМожно написать, например: завтра, послезавтра или дату.",
+      time: "Какое время вам комфортно? Принимаем с 09:00 до 22:00 — без спешки 🌿",
+      name: "Как к вам обращаться? 🤍",
+      phone:
+        "Оставьте, пожалуйста, номер для мягкого подтверждения записи 🤍\n\nФормат: +7XXXXXXXXXX",
+      contraindications:
+        "Есть ли особенности здоровья, о которых нам важно знать бережно? 🌿\n\nНапример: беременность, давление, аллергии.\n\nЕсли нет — можно написать «нет»."
     },
     kz: {
-      service: `Қай практика жақын сезіледі? 🌿\n\nАсықпай болады.\n\n${servicesListText("kz")}`,
-      day: "Қай күн жайлы болар еді?",
-      time: "Қай уақыт ыңғайлы? 09:00–22:00.",
-      phone: "Дайын болғанда — растау үшін телефон нөмірін жіберіңізші 🤍\n\n+7XXXXXXXXXX"
+      service: getBookingServiceIntro("kz"),
+      day: "Қай күн жайлы болар еді? 🌿\n\nМысалы: ертең, арғы күні немесе күн.",
+      time: "Қай уақыт ыңғайлы? 09:00–22:00 🌿",
+      name: "Сізге қалай жүгінейін? 🤍",
+      phone: "Растау үшін телефон нөмірін жіберіңізші 🤍\n\nФормат: +7XXXXXXXXXX",
+      contraindications:
+        "Денсаулық ерекшеліктері бар ма — абайлап ескерейік 🌿\n\nМысалы: жүктілік, қысым, аллергия.\n\nЖоқ болса — «жоқ» деп жазсаңыз болады."
     }
   };
   return q[lang][booking.step] || q.ru[booking.step];
+}
+
+function getBookingStartOutbound(language) {
+  const text = getBookingServiceIntro(language);
+  return {
+    reply: text,
+    messages: [{ type: "text", text }],
+    skipMenu: false,
+    menuContext: "booking_service"
+  };
 }
 
 function extractDay(text) {
@@ -55,113 +85,149 @@ function extractDay(text) {
   return text.trim();
 }
 
-function smartFill(booking, text) {
-  const t = text.trim();
-  if (!t) return;
-
-  const phoneMatch = t.match(/(\+?7[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|8\d{10})/);
-  if (phoneMatch && booking.step === "phone" && !booking.data.phone) {
-    booking.data.phone = normalizePhone(phoneMatch[0]);
-  }
-
-  const service = matchService(t);
-  if (service && !booking.data.service && booking.step === "service") {
-    booking.data.service = service;
-  }
-
-  const timeCheck = isValidBookingTime(t);
-  if (timeCheck.ok && !booking.data.time && booking.step === "time") {
-    booking.data.time = timeCheck.parsed;
-  }
-
-  if (
-    booking.step === "day" &&
-    /завтра|ертең|послезавтра|сегодня|бүгін|\d{1,2}[./]\d{1,2}/i.test(t) &&
-    !booking.data.day
-  ) {
-    booking.data.day = extractDay(t);
-  }
-
-  if (booking.step === "name" && t.length >= 2 && t.length <= 40 && !/\d{5,}/.test(t)) {
-    if (!booking.data.name && !phoneMatch) booking.data.name = t;
-  }
+function isNoContraindications(text, lang) {
+  const t = String(text || "").trim().toLowerCase();
+  return /^(нет|no|жоқ|жок|-|—|нету|жоқпын)$/i.test(t);
 }
 
-function processBookingMessage(booking, text, language) {
+function applyServiceChoice(booking, practiceId) {
+  booking.data.serviceId = practiceId;
+  booking.data.service = getServiceNameByPracticeId(practiceId);
+  booking.step = "day";
+}
+
+function resolveServiceFromInput(booking, text, options = {}) {
+  const choice = resolveBookingServiceChoice(text, options.buttonId);
+  if (choice?.cancelled) return { cancelled: true };
+  if (choice?.practiceId) {
+    applyServiceChoice(booking, choice.practiceId);
+    return { ok: true };
+  }
+
+  const matched = matchService(text);
+  if (matched) {
+    const svc = SERVICES.find((s) => s.name === matched);
+    if (svc) {
+      applyServiceChoice(booking, svc.id);
+      return { ok: true };
+    }
+    booking.data.service = matched;
+    booking.step = "day";
+    return { ok: true };
+  }
+
+  return { ok: false };
+}
+
+function processBookingMessage(booking, text, language, options = {}) {
   if (language === "kz" || language === "ru") {
     booking.language = language;
   }
   const lang = booking.language === "kz" ? "kz" : "ru";
 
   if (isCancellation(text)) {
+    booking.active = false;
     return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
   }
 
-  smartFill(booking, text);
-
-  if (booking.step === "done") {
-    booking.active = false;
-    return { done: true, reply: getScenarioResponse("booking_complete", lang) };
-  }
-
   if (booking.step === "service") {
-    booking.data.service = matchService(text) || text.trim();
-    if (!booking.data.service) {
-      return { reply: nextQuestion(booking) };
+    const resolved = resolveServiceFromInput(booking, text, options);
+    if (resolved.cancelled) {
+      booking.active = false;
+      return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
     }
-    booking.step = "day";
-    return { reply: nextQuestion(booking) };
+    if (resolved.ok) {
+      return {
+        reply: nextQuestion(booking),
+        menuContext: null,
+        skipMenu: true
+      };
+    }
+    return {
+      reply: nextQuestion(booking),
+      menuContext: "booking_service",
+      skipMenu: false
+    };
   }
 
   if (booking.step === "day") {
-    if (!text.trim()) return { reply: nextQuestion(booking) };
+    if (!text.trim()) return { reply: nextQuestion(booking), skipMenu: true };
     booking.data.day = extractDay(text);
     booking.step = "time";
-    return { reply: nextQuestion(booking) };
+    return { reply: nextQuestion(booking), skipMenu: true };
   }
 
   if (booking.step === "time") {
     const timeCheck = isValidBookingTime(text);
     if (!timeCheck.ok) {
-      return { reply: getScenarioResponse("invalid_time", lang) };
+      return { reply: getScenarioResponse("invalid_time", lang), skipMenu: true };
     }
     booking.data.time = timeCheck.parsed;
+    booking.step = "name";
+    return { reply: nextQuestion(booking), skipMenu: true };
+  }
+
+  if (booking.step === "name") {
+    const name = text.trim();
+    if (name.length < 2 || name.length > 40 || /\d{5,}/.test(name)) {
+      return { reply: nextQuestion(booking), skipMenu: true };
+    }
+    booking.data.name = name;
     booking.step = "phone";
-    return { reply: nextQuestion(booking) };
+    return { reply: nextQuestion(booking), skipMenu: true };
   }
 
   if (booking.step === "phone") {
     const phone = normalizePhone(text);
     if (!isValidPhone(phone)) {
-      return { reply: getScenarioResponse("invalid_phone", lang) };
+      return { reply: getScenarioResponse("invalid_phone", lang), skipMenu: true };
     }
     booking.data.phone = phone;
-    booking.step = "done";
-    booking.active = false;
-    return { done: true, reply: getScenarioResponse("booking_complete", lang) };
+    booking.step = "contraindications";
+    return { reply: nextQuestion(booking), skipMenu: true };
   }
 
-  return { reply: nextQuestion(booking) };
+  if (booking.step === "contraindications") {
+    booking.data.contraindications = isNoContraindications(text, lang)
+      ? lang === "kz"
+        ? "жоқ"
+        : "нет"
+      : text.trim();
+    booking.step = "done";
+    booking.active = false;
+    return {
+      done: true,
+      reply: getScenarioResponse("booking_complete", lang),
+      skipMenu: false,
+      menuContext: "main"
+    };
+  }
+
+  return { reply: nextQuestion(booking), skipMenu: true };
 }
 
 function buildLead(booking, userId, language) {
   const d = booking.data;
   const langLabel = language === "kz" ? "Казахский" : "Русский";
-  const nameLine = d.name ? `👤 Имя: ${d.name}\n` : "";
+  const contraLine = d.contraindications
+    ? `⚠️ Особенности: ${d.contraindications}\n`
+    : "";
   return {
     text: `🌿 Заявка · Sakina Wellness
 
-${nameLine}📞 Телефон: ${d.phone || userId}
+👤 Имя: ${d.name || "—"}
+📞 Телефон: ${d.phone || userId}
 🌍 Язык: ${langLabel}
 💆 Практика: ${d.service}
 📅 День: ${d.day}
 🕐 Время: ${d.time}
-📍 Источник: Sakina Wellness · WhatsApp`,
+${contraLine}📍 Источник: Sakina Wellness · WhatsApp`,
     payload: {
       name: d.name || "—",
       phone: d.phone || userId,
       language: langLabel,
       service: d.service,
+      serviceId: d.serviceId || "—",
       day: d.day,
       time: d.time,
       contraindications: d.contraindications || "—",
@@ -176,7 +242,7 @@ module.exports = {
   initBooking,
   processBookingMessage,
   buildLead,
-  smartFill,
+  getBookingStartOutbound,
   nextQuestion,
   STEPS
 };
