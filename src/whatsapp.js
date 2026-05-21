@@ -4,7 +4,8 @@ const fs = require("fs");
 const { BRAND } = require("./brand");
 const { normalizePhone } = require("./validators");
 const { getTypingDelayMs } = require("./ux");
-const { buildMenuBlock, getTextMenuFallback } = require("./menus");
+const { getTextMenuFallback } = require("./menus");
+const { sendMenu: sendMenuGreen } = require("./sendMenu");
 
 function toChatId(to) {
   const phone = normalizePhone(to).replace("+", "");
@@ -177,34 +178,6 @@ async function sendTypingGreen(config, chatId, ms, logger) {
   }
 }
 
-async function sendInteractiveButtonsReply(config, block, chatId, logger) {
-  const payload = {
-    chatId,
-    header: block.header || BRAND.header,
-    body: block.body,
-    footer: block.footer || BRAND.subtitle,
-    buttons: block.buttons.map((b) => ({
-      buttonId: b.buttonId,
-      buttonText: b.buttonText
-    }))
-  };
-
-  return postGreen(config, "sendInteractiveButtonsReply", payload, logger);
-}
-
-async function sendListMessageGreen(config, block, chatId, logger) {
-  const payload = {
-    chatId,
-    message: block.body,
-    title: block.header,
-    footer: block.footer,
-    buttonText: block.listButtonText,
-    sections: block.sections
-  };
-
-  return postGreen(config, "sendListMessage", payload, logger);
-}
-
 async function sendWhatsAppGreen({ config, to, text, logger }) {
   const chatId = toChatId(to);
   await postGreen(config, "sendMessage", { chatId, message: text }, logger);
@@ -240,62 +213,14 @@ async function sendLocalImageGreen({ config, to, filePath, caption, logger }) {
   return true;
 }
 
-async function sendContextMenu({ config, to, language, menuContext, logger }) {
+/** Единый helper меню (Green API) */
+async function sendMenu({ config, to, language, menuContext = "main", logger }) {
   const chatId = toChatId(to);
-  const block = buildMenuBlock(language, menuContext || "default");
-  const buttons = block.buttons.map((b) => ({
-    buttonId: b.buttonId,
-    buttonText: b.buttonText
-  }));
-
-  try {
-    await sendListMessageGreen(config, block, chatId, logger);
-    logger.info("Context menu sent (list)", { chatId, menuContext, count: buttons.length });
-    return { mode: "list", menuContext };
-  } catch (listErr) {
-    logger.debug("sendListMessage failed", {
-      menuContext,
-      message: listErr?.response?.data?.message || listErr.message
-    });
-  }
-
-  try {
-    if (buttons.length <= 3) {
-      await sendInteractiveButtonsReply(config, { ...block, buttons }, chatId, logger);
-      logger.info("Context menu sent (buttons)", { chatId, menuContext });
-      return { mode: "buttons", menuContext };
-    }
-
-    await sendInteractiveButtonsReply(
-      config,
-      { ...block, buttons: buttons.slice(0, 3) },
-      chatId,
-      logger
-    );
-    await new Promise((r) => setTimeout(r, 500));
-    await sendInteractiveButtonsReply(
-      config,
-      {
-        header: BRAND.header,
-        body: language === "kz" ? "Тағы 👇" : "Ещё 👇",
-        footer: block.footer,
-        buttons: buttons.slice(3)
-      },
-      chatId,
-      logger
-    );
-    return { mode: "buttons_split", menuContext };
-  } catch (btnErr) {
-    logger.debug("buttons failed, text fallback", { message: btnErr.message });
-  }
-
-  const text = getTextMenuFallback(language, menuContext);
-  await sendWhatsAppGreen({ config, to, text, logger });
-  return { mode: "text_fallback", menuContext };
+  return sendMenuGreen({ config, chatId, language, menuContext, logger });
 }
 
-async function sendMainMenuButtons({ config, to, language, logger, menuContext = "main" }) {
-  return sendContextMenu({ config, to, language, menuContext, logger });
+async function sendMainMenuButtons(opts) {
+  return sendMenu(opts);
 }
 
 async function sendTextMenuFallback({ config, to, language, logger, menuContext = "main" }) {
@@ -374,9 +299,10 @@ module.exports = {
   parseIncomingFromCloud,
   parseIncomingMessage,
   sendWhatsApp,
+  sendMenu,
   sendMainMenuButtons,
-  sendContextMenu,
   sendTextMenuFallback,
   sendOutboundMessages,
-  sendTypingGreen
+  sendTypingGreen,
+  toChatId
 };

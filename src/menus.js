@@ -61,38 +61,24 @@ const ITEMS = {
 
 const MENU_CONTEXTS = {
   main: {
-    bodyRu: "Выберите, что вас интересует 👇",
-    bodyKz: "Не қызықтырады 👇",
     items: ["price", "booking", "address", "contra"]
   },
   after_price: {
-    bodyRu: "Что подсказать дальше? 👇",
-    bodyKz: "Әрі не айтайын? 👇",
     items: ["booking", "practices", "address", "back"]
   },
   after_address: {
-    bodyRu: "Что подсказать дальше? 👇",
-    bodyKz: "Әрі не айтайын? 👇",
     items: ["booking", "price", "session", "back"]
   },
   after_contra: {
-    bodyRu: "Что подсказать дальше? 👇",
-    bodyKz: "Әрі не айтайын? 👇",
     items: ["booking", "practices", "back"]
   },
   after_practices: {
-    bodyRu: "Что подсказать дальше? 👇",
-    bodyKz: "Әрі не айтайын? 👇",
     items: ["booking", "price", "address", "back"]
   },
   after_session: {
-    bodyRu: "Что подсказать дальше? 👇",
-    bodyKz: "Әрі не айтайын? 👇",
     items: ["booking", "price", "address", "back"]
   },
   default: {
-    bodyRu: "Можно выбрать кнопкой 👇",
-    bodyKz: "Түйме арқылы таңдаңыз 👇",
     items: ["price", "booking", "address", "contra"]
   }
 };
@@ -127,7 +113,6 @@ function getContextItems(context) {
 
 function buildMenuBlock(language, context, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
-  const cfg = MENU_CONTEXTS[context] || MENU_CONTEXTS.default;
   const items = getContextItems(context);
 
   const buttons = items.map((item) => ({
@@ -138,44 +123,26 @@ function buildMenuBlock(language, context, options = {}) {
     description: lang === "kz" ? item.descKz : item.descRu
   }));
 
-  const body = options.fullBody
-    ? getMenuBody(language)
-    : lang === "kz"
-      ? cfg.bodyKz
-      : cfg.bodyRu;
-
   return {
     context,
     header: BRAND.header,
-    body,
+    body: options.fullBody ? getMenuBody(language) : BRAND.subtitle,
     footer: getMenuFooter(),
-    listButtonText: lang === "kz" ? "Мәзір" : "Меню",
-    sectionTitle: "Sakina Wellness",
-    buttons,
-    sections: [
-      {
-        title: "Sakina Wellness",
-        rows: buttons.map((b) => ({
-          title: b.title,
-          rowId: b.rowId,
-          description: b.description
-        }))
-      }
-    ]
+    buttons
   };
 }
 
+/** Полное текстовое меню — всегда с пунктами, без пустого «Выберите…» */
 function getTextMenuFallback(language, context = "main") {
   const lang = language === "kz" ? "kz" : "ru";
-  const cfg = MENU_CONTEXTS[context] || MENU_CONTEXTS.default;
   const items = getContextItems(context);
   const lines = items.map((item, i) => `${i + 1}. ${item[lang]}`).join("\n");
-  const body = lang === "kz" ? cfg.bodyKz : cfg.bodyRu;
 
   if (lang === "kz") {
-    return `${body}\n\n${lines}\n\nСанды жіберіңіз (мысалы: 1) 🌿`;
+    return `${lines}\n\nСанды жіберіңіз немесе бөлімді таңдаңыз 🌿`;
   }
-  return `${body}\n\n${lines}\n\nИли цифру (например: 1) 🌿`;
+
+  return `${lines}\n\nНапишите цифру или выберите раздел 🌿`;
 }
 
 function normalizeLabel(text) {

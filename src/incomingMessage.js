@@ -3,10 +3,11 @@ const { isDuplicate } = require("./messageDedup");
 const { getSession, updateSession } = require("./sessionStore");
 const { detectLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
+const { getTextMenuFallback } = require("./menus");
 const {
   parseIncomingMessage,
-  sendContextMenu,
-  sendTextMenuFallback,
+  sendMenu,
+  sendWhatsApp,
   sendOutboundMessages
 } = require("./whatsapp");
 
@@ -94,6 +95,7 @@ async function processIncomingMessage({
   }
 
   const sessionAfter = getSession(payload.userId);
+  const lang = sessionAfter.language || detectLanguage(payload.text);
   const menuContext = result?.menuContext || "main";
 
   if (!result?.skipMenu) {
@@ -101,32 +103,35 @@ async function processIncomingMessage({
       await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
     }
 
+    let menuResult;
+
     if (waConfig.provider === "green") {
-      await sendContextMenu({
+      menuResult = await sendMenu({
         config: waConfig,
         to: payload.userId,
-        language: sessionAfter.language || detectLanguage(payload.text),
+        language: lang,
         menuContext,
         logger
       });
     } else {
-      await sendTextMenuFallback({
+      await sendWhatsApp({
         config: waConfig,
         to: payload.userId,
-        language: sessionAfter.language || detectLanguage(payload.text),
-        menuContext,
+        text: getTextMenuFallback(lang, menuContext),
         logger
       });
+      menuResult = { mode: "text_fallback" };
     }
 
-    sessionAfter.menuContext = menuContext;
-    updateSession(payload.userId, sessionAfter);
-
-    logger.info("Context menu sent after reply", {
+    logger.info("Menu sent after reply", {
       userId: payload.userId,
-      menuContext
+      menuContext,
+      mode: menuResult?.mode
     });
   }
+
+  sessionAfter.menuContext = menuContext;
+  updateSession(payload.userId, sessionAfter);
 }
 
 module.exports = { processIncomingMessage };
