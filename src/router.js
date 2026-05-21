@@ -132,7 +132,7 @@ function getRouteReply(routeName, language) {
 function appendGentleClosing(reply, routeName, language, holdSales) {
   if (!reply || typeof reply !== "string" || holdSales) return reply;
   if (routeName === "booking" || routeName === "contraindications") return reply;
-  if (/осудят|асықпай|не спешить|қауіпсіз/i.test(reply)) return reply;
+  if (/осудят|асықпай|не спешить|қауіпсіз|мягко подскажу|жұмсақ айтып/i.test(reply)) return reply;
 
   const closing =
     language === "kz"

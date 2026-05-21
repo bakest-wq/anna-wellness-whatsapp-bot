@@ -41,12 +41,6 @@ function polishReply(text, language, options = {}) {
     reply += language === "kz" ? "\n\nҚалай қолдау көрсете аламын?" : "\n\nЧем мягко подсказать?";
   }
 
-  if (emotional && !/осудят|асықпай|не спешить|қауіпсіз/i.test(reply)) {
-    reply += language === "kz"
-      ? "\n\nМұнда асықпай болады 🤍"
-      : "\n\nВас здесь не осудят и не будут торопить 🌿";
-  }
-
   return reply;
 }
 

@@ -44,8 +44,6 @@ ${MAPS.twoGis}
 
 Ежедневно ${WELLNESS.schedule} 🌿
 
-${BRAND.sanctuaryLine}
-
 Если захотите прийти — мягко подскажу 🤍`;
 
   const messages = [{ type: "text", text }];
