@@ -5,7 +5,8 @@ const { BRAND } = require("./brand");
 const { normalizePhone } = require("./validators");
 const { getTypingDelayMs } = require("./ux");
 const { getTextMenuFallback } = require("./menus");
-const { sendMenu: sendMenuGreen } = require("./sendMenu");
+const { sendMenu: sendMenuGreen, tryInteractiveButtonsOnly: tryButtonsGreen } =
+  require("./sendMenu");
 
 function toChatId(to) {
   const phone = normalizePhone(to).replace("+", "");
@@ -219,6 +220,11 @@ async function sendMenu({ config, to, language, menuContext = "main", logger }) 
   return sendMenuGreen({ config, chatId, language, menuContext, logger });
 }
 
+async function tryInteractiveButtonsOnly({ config, to, language, menuContext = "main", logger }) {
+  const chatId = toChatId(to);
+  return tryButtonsGreen({ config, chatId, language, menuContext, logger });
+}
+
 async function sendMainMenuButtons(opts) {
   return sendMenu(opts);
 }
@@ -300,6 +306,7 @@ module.exports = {
   parseIncomingMessage,
   sendWhatsApp,
   sendMenu,
+  tryInteractiveButtonsOnly,
   sendMainMenuButtons,
   sendTextMenuFallback,
   sendOutboundMessages,

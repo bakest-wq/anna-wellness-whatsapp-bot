@@ -6,6 +6,8 @@ const ITEMS = {
     route: "price",
     ru: "💰 Узнать цены",
     kz: "💰 Бағалар",
+    labelRu: "Узнать цены",
+    labelKz: "Бағалар",
     descRu: "Прайс",
     descKz: "Бағалар"
   },
@@ -14,6 +16,8 @@ const ITEMS = {
     route: "booking",
     ru: "📅 Записаться",
     kz: "📅 Жазылу",
+    labelRu: "Записаться",
+    labelKz: "Жазылу",
     descRu: "Подбор сеанса",
     descKz: "Жазылу"
   },
@@ -22,6 +26,8 @@ const ITEMS = {
     route: "address",
     ru: "📍 Адрес",
     kz: "📍 Мекенжай",
+    labelRu: "Адрес",
+    labelKz: "Мекенжай",
     descRu: "Как добраться",
     descKz: "Мекенжай"
   },
@@ -30,6 +36,8 @@ const ITEMS = {
     route: "contraindications",
     ru: "⚠️ Противопоказания",
     kz: "⚠️ Қарсы көрсетілім",
+    labelRu: "Противопоказания",
+    labelKz: "Қарсы көрсетілім",
     descRu: "Рекомендации",
     descKz: "Абайлау"
   },
@@ -38,6 +46,8 @@ const ITEMS = {
     route: "practices",
     ru: "🌿 Подробнее о практиках",
     kz: "🌿 Практикалар",
+    labelRu: "Подробнее о практиках",
+    labelKz: "Практикалар",
     descRu: "Что мы делаем",
     descKz: "Практикалар"
   },
@@ -46,6 +56,8 @@ const ITEMS = {
     route: "session",
     ru: "🌿 Как проходит сеанс",
     kz: "🌿 Сеанс қалай",
+    labelRu: "Как проходит сеанс",
+    labelKz: "Сеанс қалай",
     descRu: "Формат визита",
     descKz: "Формат"
   },
@@ -54,6 +66,8 @@ const ITEMS = {
     route: "back",
     ru: "⬅️ Назад",
     kz: "⬅️ Артқа",
+    labelRu: "Назад",
+    labelKz: "Артқа",
     descRu: "Главное меню",
     descKz: "Басты мәзір"
   }
@@ -81,6 +95,13 @@ const MENU_CONTEXTS = {
   default: {
     items: ["price", "booking", "address", "contra"]
   }
+};
+
+const MAIN_NUMERIC = {
+  1: "price",
+  2: "booking",
+  3: "address",
+  4: "contraindications"
 };
 
 const ID_TO_ROUTE = Object.fromEntries(Object.values(ITEMS).map((i) => [i.id, i.route]));
@@ -126,29 +147,90 @@ function buildMenuBlock(language, context, options = {}) {
   return {
     context,
     header: BRAND.header,
-    body: options.fullBody ? getMenuBody(language) : BRAND.subtitle,
+    body: options.fullBody ? getMenuBody(language) : "👇",
     footer: getMenuFooter(),
     buttons
   };
 }
 
-/** Полное текстовое меню — всегда с пунктами, без пустого «Выберите…» */
-function getTextMenuFallback(language, context = "main") {
+/** Текстовое меню с цифрами — всегда в теле сообщения */
+function getMenuTextBlock(language, context = "main") {
   const lang = language === "kz" ? "kz" : "ru";
-  const items = getContextItems(context);
-  const lines = items.map((item, i) => `${i + 1}. ${item[lang]}`).join("\n");
 
-  if (lang === "kz") {
-    return `${lines}\n\nСанды жіберіңіз немесе бөлімді таңдаңыз 🌿`;
+  if (context === "main" || context === "default") {
+    if (lang === "ru") {
+      return `Выберите, пожалуйста, что вам сейчас ближе:
+
+1️⃣ Узнать цены
+2️⃣ Записаться
+3️⃣ Адрес
+4️⃣ Противопоказания
+
+Можно просто отправить цифру 🌿`;
+    }
+
+    return `Қазір не жақын?
+
+1️⃣ Бағалар
+2️⃣ Жазылу
+3️⃣ Мекенжай
+4️⃣ Қарсы көрсетілім
+
+Санды жіберіңіз 🌿`;
   }
 
-  return `${lines}\n\nНапишите цифру или выберите раздел 🌿`;
+  const items = getContextItems(context);
+  const prefix = lang === "ru" ? "Что подсказать дальше:" : "Әрі не айтайын:";
+  const lines = items
+    .map((item, i) => `${i + 1}️⃣ ${item[lang === "kz" ? "labelKz" : "labelRu"]}`)
+    .join("\n");
+  const footer = lang === "ru" ? "Можно отправить цифру 🌿" : "Санды жіберіңіз 🌿";
+
+  return `${prefix}\n\n${lines}\n\n${footer}`;
+}
+
+function getTextMenuFallback(language, context = "main") {
+  return getMenuTextBlock(language, context);
+}
+
+function messageAlreadyHasMenu(text) {
+  if (!text) return false;
+  return /[1-4]️⃣/.test(text) || /Можно просто отправить цифру|Санды жіберіңіз 🌿/.test(text);
+}
+
+function appendMenuToReply(reply, language, context = "main") {
+  const menu = getMenuTextBlock(language, context);
+  if (!reply || !String(reply).trim()) return menu;
+  if (messageAlreadyHasMenu(reply)) return reply;
+  return `${String(reply).trim()}\n\n${menu}`;
+}
+
+function enrichOutboundMessages(messages, language, context = "main") {
+  if (!messages?.length) {
+    return [{ type: "text", text: getMenuTextBlock(language, context) }];
+  }
+
+  let lastTextIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].type === "text") {
+      lastTextIdx = i;
+      break;
+    }
+  }
+
+  if (lastTextIdx < 0) {
+    return [...messages, { type: "text", text: getMenuTextBlock(language, context) }];
+  }
+
+  return messages.map((m, i) =>
+    i === lastTextIdx ? { ...m, text: appendMenuToReply(m.text, language, context) } : m
+  );
 }
 
 function normalizeLabel(text) {
   return String(text || "")
     .trim()
-    .replace(/^[\s💰📅📍⚠️🌿⬅️]+/u, "")
+    .replace(/^[\s💰📅📍⚠️🌿⬅️1-4️⃣]+/u, "")
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
@@ -157,9 +239,15 @@ const LABEL_TO_ROUTE = {};
 for (const item of Object.values(ITEMS)) {
   LABEL_TO_ROUTE[normalizeLabel(item.ru)] = item.route;
   LABEL_TO_ROUTE[normalizeLabel(item.kz)] = item.route;
+  LABEL_TO_ROUTE[normalizeLabel(item.labelRu)] = item.route;
+  LABEL_TO_ROUTE[normalizeLabel(item.labelKz)] = item.route;
 }
 LABEL_TO_ROUTE["цены"] = "price";
+LABEL_TO_ROUTE["узнать цены"] = "price";
 LABEL_TO_ROUTE["запись"] = "booking";
+LABEL_TO_ROUTE["записаться"] = "booking";
+LABEL_TO_ROUTE["адрес"] = "address";
+LABEL_TO_ROUTE["противопоказания"] = "contraindications";
 LABEL_TO_ROUTE["назад"] = "back";
 LABEL_TO_ROUTE["артқа"] = "back";
 LABEL_TO_ROUTE["подробнее о практиках"] = "practices";
@@ -167,26 +255,38 @@ LABEL_TO_ROUTE["практикалар"] = "practices";
 LABEL_TO_ROUTE["как проходит сеанс"] = "session";
 LABEL_TO_ROUTE["сеанс қалай"] = "session";
 
+function parseNumericChoice(text, menuContext) {
+  const raw = String(text || "").trim();
+  const digit = raw.match(/^([1-4])[️⃣]?\s*$/u) || raw.match(/^([1-4])$/);
+  if (!digit) return null;
+
+  const n = Number(digit[1]);
+  if (menuContext === "main" || menuContext === "default") {
+    return MAIN_NUMERIC[n] || null;
+  }
+
+  const items = getContextItems(menuContext);
+  return items[n - 1]?.route || null;
+}
+
 function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
   if (buttonId && ID_TO_ROUTE[buttonId]) return ID_TO_ROUTE[buttonId];
+
+  const raw = String(buttonText || "").trim();
+  const numericRoute = parseNumericChoice(raw, menuContext);
+  if (numericRoute) return numericRoute;
 
   const normalized = normalizeLabel(buttonText);
   if (LABEL_TO_ROUTE[normalized]) return LABEL_TO_ROUTE[normalized];
 
-  const numeric = String(buttonText || "").trim().match(/^([1-4])$/);
-  if (numeric) {
-    const items = getContextItems(menuContext);
-    const idx = Number(numeric[1]) - 1;
-    if (items[idx]) return items[idx].route;
-  }
-
-  const withSuffix = String(buttonText || "")
-    .trim()
-    .match(/^([1-4])[\s.)-–]/);
+  const withSuffix = raw.match(/^([1-4])[️⃣]?[\s.)-–]/u);
   if (withSuffix) {
+    const n = Number(withSuffix[1]);
+    if (menuContext === "main" || menuContext === "default") {
+      return MAIN_NUMERIC[n] || null;
+    }
     const items = getContextItems(menuContext);
-    const idx = Number(withSuffix[1]) - 1;
-    if (items[idx]) return items[idx].route;
+    return items[n - 1]?.route || null;
   }
 
   return null;
@@ -196,9 +296,13 @@ module.exports = {
   ITEMS,
   MENU_CONTEXTS,
   ID_TO_ROUTE,
+  MAIN_NUMERIC,
   getMenuContextForRoute,
   buildMenuBlock,
+  getMenuTextBlock,
   getTextMenuFallback,
+  appendMenuToReply,
+  enrichOutboundMessages,
   resolveMenuAction,
   getContextItems
 };

@@ -3,15 +3,16 @@ const { isDuplicate } = require("./messageDedup");
 const { getSession, updateSession } = require("./sessionStore");
 const { detectLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
-const { getTextMenuFallback } = require("./menus");
+const { enrichOutboundMessages, getMenuTextBlock } = require("./menus");
 const {
   parseIncomingMessage,
-  sendMenu,
   sendWhatsApp,
-  sendOutboundMessages
+  sendOutboundMessages,
+  tryInteractiveButtonsOnly
 } = require("./whatsapp");
 
 const MENU_DELAY_MS = Number(process.env.MENU_AFTER_REPLY_DELAY_MS || 700);
+const MENU_BUTTONS_AFTER = process.env.MENU_BUTTONS_AFTER !== "false";
 
 async function processIncomingMessage({
   body,
@@ -80,50 +81,50 @@ async function processIncomingMessage({
   const reply = result?.reply || (typeof result === "string" ? result : null);
   const outbound = result?.messages || (reply ? [{ type: "text", text: reply }] : []);
 
-  if (outbound.length) {
-    await sendOutboundMessages({
-      config: waConfig,
-      to: payload.userId,
-      messages: outbound,
-      logger
-    });
-    logger.info("Reply sent", {
-      userId: payload.userId,
-      parts: outbound.length,
-      preview: String(outbound[0]?.text || outbound[0]?.type).slice(0, 90)
-    });
-  }
-
   const sessionAfter = getSession(payload.userId);
   const lang = sessionAfter.language || detectLanguage(payload.text);
   const menuContext = result?.menuContext || "main";
 
-  if (!result?.skipMenu) {
-    if (outbound.length) {
+  const toSend = result?.skipMenu
+    ? outbound
+    : enrichOutboundMessages(outbound, lang, menuContext);
+
+  if (toSend.length) {
+    await sendOutboundMessages({
+      config: waConfig,
+      to: payload.userId,
+      messages: toSend,
+      logger
+    });
+    logger.info("Reply sent", {
+      userId: payload.userId,
+      parts: toSend.length,
+      withMenu: !result?.skipMenu,
+      preview: String(toSend[0]?.text || toSend[0]?.type).slice(0, 90)
+    });
+  } else if (!result?.skipMenu) {
+    await sendWhatsApp({
+      config: waConfig,
+      to: payload.userId,
+      text: getMenuTextBlock(lang, menuContext),
+      logger
+    });
+  }
+
+  if (!result?.skipMenu && MENU_BUTTONS_AFTER && waConfig.provider === "green") {
+    if (toSend.length) {
       await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
     }
 
-    let menuResult;
+    const menuResult = await tryInteractiveButtonsOnly({
+      config: waConfig,
+      to: payload.userId,
+      language: lang,
+      menuContext,
+      logger
+    });
 
-    if (waConfig.provider === "green") {
-      menuResult = await sendMenu({
-        config: waConfig,
-        to: payload.userId,
-        language: lang,
-        menuContext,
-        logger
-      });
-    } else {
-      await sendWhatsApp({
-        config: waConfig,
-        to: payload.userId,
-        text: getTextMenuFallback(lang, menuContext),
-        logger
-      });
-      menuResult = { mode: "text_fallback" };
-    }
-
-    logger.info("Menu sent after reply", {
+    logger.info("Optional menu buttons", {
       userId: payload.userId,
       menuContext,
       mode: menuResult?.mode

@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { buildMenuBlock, getTextMenuFallback } = require("./menus");
+const { buildMenuBlock } = require("./menus");
 const { BRAND } = require("./brand");
 
 function isGreenOk(data) {
@@ -38,7 +38,7 @@ async function sendInteractiveButtons(config, block, chatId, buttons, logger) {
   const payload = {
     chatId,
     header: block.header || BRAND.header,
-    body: block.body || BRAND.subtitle,
+    body: block.body || "👇",
     footer: block.footer || "",
     buttons: buttons.map((b) => ({
       buttonId: b.buttonId,
@@ -53,24 +53,19 @@ async function sendInteractiveButtons(config, block, chatId, buttons, logger) {
   return data;
 }
 
-async function sendTextMenu(config, chatId, text, logger) {
-  await postGreen(config, "sendMessage", { chatId, message: text }, logger);
-}
-
 /**
- * Единый helper: interactive buttons → при ошибке полный text fallback.
+ * Только кнопки — без отдельного текстового меню (оно уже в основном сообщении).
  */
-async function sendMenu({ config, chatId, language, menuContext = "main", logger }) {
+async function tryInteractiveButtonsOnly({
+  config,
+  chatId,
+  language,
+  menuContext = "main",
+  logger
+}) {
   const lang = language === "kz" ? "kz" : "ru";
   const block = buildMenuBlock(lang, menuContext);
   const buttons = block.buttons;
-  const fallbackText = getTextMenuFallback(lang, menuContext);
-
-  if (process.env.FORCE_MENU_TEXT === "true") {
-    logger?.warn?.("FORCE_MENU_TEXT: text menu only", { chatId, menuContext });
-    await sendTextMenu(config, chatId, fallbackText, logger);
-    return { mode: "text_fallback", menuContext, forced: true };
-  }
 
   const tryButtons = async (btnList, blockOverride = null) => {
     try {
@@ -89,31 +84,50 @@ async function sendMenu({ config, chatId, language, menuContext = "main", logger
 
   if (buttons.length <= 3) {
     if (await tryButtons(buttons)) {
-      logger?.info?.("Menu: interactive buttons", { chatId, menuContext, count: buttons.length });
       return { mode: "buttons", menuContext };
     }
-  } else {
-    if (await tryButtons(buttons)) {
-      logger?.info?.("Menu: 4 interactive buttons", { chatId, menuContext });
-      return { mode: "buttons", menuContext };
-    }
+    return { mode: "skipped" };
+  }
 
-    if (await tryButtons(buttons.slice(0, 3))) {
-      await new Promise((r) => setTimeout(r, 500));
-      const restBlock = {
-        ...block,
-        body: lang === "kz" ? "Тағы бір бөлім 👇" : "Ещё один раздел 👇"
-      };
-      if (await tryButtons(buttons.slice(3), restBlock)) {
-        logger?.info?.("Menu: buttons split 3+1", { chatId, menuContext });
-        return { mode: "buttons_split", menuContext };
-      }
+  if (await tryButtons(buttons)) {
+    return { mode: "buttons", menuContext };
+  }
+
+  if (await tryButtons(buttons.slice(0, 3))) {
+    await new Promise((r) => setTimeout(r, 500));
+    const restBlock = { ...block, body: lang === "kz" ? "Тағы 👇" : "Ещё 👇" };
+    if (await tryButtons(buttons.slice(3), restBlock)) {
+      return { mode: "buttons_split", menuContext };
     }
   }
 
-  logger?.warn?.("Menu: sending full text fallback", { chatId, menuContext });
-  await sendTextMenu(config, chatId, fallbackText, logger);
+  return { mode: "skipped" };
+}
+
+/** @deprecated Используйте enrichOutboundMessages + tryInteractiveButtonsOnly */
+async function sendMenu({ config, chatId, language, menuContext = "main", logger }) {
+  const { getMenuTextBlock } = require("./menus");
+  const fallbackText = getMenuTextBlock(language, menuContext);
+
+  if (process.env.FORCE_MENU_TEXT === "true") {
+    await postGreen(config, "sendMessage", { chatId, message: fallbackText }, logger);
+    return { mode: "text_only", menuContext, forced: true };
+  }
+
+  const buttonsResult = await tryInteractiveButtonsOnly({
+    config,
+    chatId,
+    language,
+    menuContext,
+    logger
+  });
+
+  if (buttonsResult.mode !== "skipped") {
+    return buttonsResult;
+  }
+
+  await postGreen(config, "sendMessage", { chatId, message: fallbackText }, logger);
   return { mode: "text_fallback", menuContext };
 }
 
-module.exports = { sendMenu, getTextMenuFallback };
+module.exports = { sendMenu, tryInteractiveButtonsOnly };
