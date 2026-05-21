@@ -88,15 +88,20 @@ function smartFill(booking, text) {
 }
 
 function processBookingMessage(booking, text, language) {
+  if (language === "kz" || language === "ru") {
+    booking.language = language;
+  }
+  const lang = booking.language === "kz" ? "kz" : "ru";
+
   if (isCancellation(text)) {
-    return { cancelled: true, reply: getScenarioResponse("booking_cancelled", language) };
+    return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
   }
 
   smartFill(booking, text);
 
   if (booking.step === "done") {
     booking.active = false;
-    return { done: true, reply: getScenarioResponse("booking_complete", language) };
+    return { done: true, reply: getScenarioResponse("booking_complete", lang) };
   }
 
   if (booking.step === "service") {
@@ -118,7 +123,7 @@ function processBookingMessage(booking, text, language) {
   if (booking.step === "time") {
     const timeCheck = isValidBookingTime(text);
     if (!timeCheck.ok) {
-      return { reply: getScenarioResponse("invalid_time", language) };
+      return { reply: getScenarioResponse("invalid_time", lang) };
     }
     booking.data.time = timeCheck.parsed;
     booking.step = "phone";
@@ -128,12 +133,12 @@ function processBookingMessage(booking, text, language) {
   if (booking.step === "phone") {
     const phone = normalizePhone(text);
     if (!isValidPhone(phone)) {
-      return { reply: getScenarioResponse("invalid_phone", language) };
+      return { reply: getScenarioResponse("invalid_phone", lang) };
     }
     booking.data.phone = phone;
     booking.step = "done";
     booking.active = false;
-    return { done: true, reply: getScenarioResponse("booking_complete", language) };
+    return { done: true, reply: getScenarioResponse("booking_complete", lang) };
   }
 
   return { reply: nextQuestion(booking) };

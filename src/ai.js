@@ -2,18 +2,35 @@ const { buildSystemPrompt } = require("./prompt");
 const { WELLNESS } = require("./knowledge");
 const { BRAND } = require("./brand");
 const { detectEmotionalDistress } = require("./emotionalSupport");
+const { normalizeLanguage, hasKazakhScript } = require("./language");
 
 const SALES_CLOSERS =
   /запис|жазыл|практик.*ближе|какая\s+практика|стоит\s+попробовать|рекомендую\s+массаж/i;
 
 function polishReply(text, language, options = {}) {
+  const lang = normalizeLanguage(language);
   let reply = String(text || "").trim();
   const emotional = options.emotional || options.holdSales;
 
   if (!reply) {
-    return emotional || language === "kz"
+    return emotional || lang === "kz"
       ? "Естіп тұрмын 🤍 Мұнда асықпай болады — қалай қолдау көрсете аламын?"
       : "Слушаю вас 🤍 Здесь можно не спешить — чем мягко подсказать?";
+  }
+
+  if (lang === "ru" && hasKazakhScript(reply)) {
+    reply =
+      "Слушаю вас 🤍 Здесь можно не спешить — чем мягко подсказать о практиках или записи?";
+  }
+
+  if (
+    lang === "kz" &&
+    !hasKazakhScript(reply) &&
+    /\b(здравствуйте|слушаю|спасибо|пожалуйста|записаться|цены|адрес|противопоказания|практик)\b/i.test(
+      reply
+    )
+  ) {
+    reply = "Естіп тұрмын 🤍 Мұнда асықпай болады — қалай қолдау көрсете аламын?";
   }
 
   reply = reply
@@ -38,13 +55,14 @@ function polishReply(text, language, options = {}) {
   }
 
   if (!reply.includes("?") && !emotional) {
-    reply += language === "kz" ? "\n\nҚалай қолдау көрсете аламын?" : "\n\nЧем мягко подсказать?";
+    reply += lang === "kz" ? "\n\nҚалай қолдау көрсете аламын?" : "\n\nЧем мягко подсказать?";
   }
 
   return reply;
 }
 
 async function getAiReply({ openai, model, text, language, history, intent, profile, emotional }) {
+  const lang = normalizeLanguage(language);
   const context = [];
   if (profile?.name) context.push(`Имя: ${profile.name}`);
   if (emotional) {
@@ -55,12 +73,17 @@ async function getAiReply({ openai, model, text, language, history, intent, prof
   context.push(`${BRAND.name} · бережное wellness-пространство`);
   context.push(`Мастер: ${WELLNESS.master}`);
 
+  const langInstruction =
+    lang === "kz"
+      ? "Жауап ТЕК қазақша. Орысша сөз қолданбаңыз."
+      : "Ответ СТРОГО на русском. Казахские слова не используйте.";
+
   const userInstruction = emotional
-    ? `${context.join("\n")}\nЯзык: ${language}\nСообщение: ${text}\n\nОтвет: 1–2 короткие тёплые фразы. Понимание + безопасность. Без массажа и записи.`
-    : `${context.join("\n")}\nЯзык: ${language}\nСообщение: ${text}\n\nОтвет: 1–3 короткие спокойные фразы. Без давления.`;
+    ? `${context.join("\n")}\n${langInstruction}\nСообщение: ${text}\n\nОтвет: 1–2 короткие тёплые фразы. Понимание + безопасность. Без массажа и записи.`
+    : `${context.join("\n")}\n${langInstruction}\nСообщение: ${text}\n\nОтвет: 1–3 короткие спокойные фразы. Без давления.`;
 
   const messages = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: buildSystemPrompt(lang) },
     ...history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
     { role: "user", content: userInstruction }
   ];
@@ -72,7 +95,7 @@ async function getAiReply({ openai, model, text, language, history, intent, prof
     messages
   });
 
-  return polishReply(completion.choices?.[0]?.message?.content, language, {
+  return polishReply(completion.choices?.[0]?.message?.content, lang, {
     emotional: emotional || detectEmotionalDistress(text),
     holdSales: emotional
   });

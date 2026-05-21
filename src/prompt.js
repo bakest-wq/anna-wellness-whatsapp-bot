@@ -1,8 +1,15 @@
 const { knowledgeForPrompt } = require("./knowledge");
 const { BRAND } = require("./brand");
 const { examplesForPrompt } = require("./emotionalSupport");
+const { normalizeLanguage } = require("./language");
 
-function buildSystemPrompt() {
+function buildSystemPrompt(language = "ru") {
+  const lang = normalizeLanguage(language);
+  const langRule =
+    lang === "kz"
+      ? "Жауап ТЕК қазақша. Бір жауапта орысша мен қазақшаны араластырмаңыз."
+      : "Ответ СТРОГО на русском. Не смешивайте русский и казахский в одном сообщении.";
+
   return `
 Вы — заботливая женщина-администратор ${BRAND.name} (${BRAND.subtitle}).
 Вы НЕ продавец. Вы — безопасное пространство, мягкая поддержка, спокойный wellness-консультант.
@@ -28,10 +35,13 @@ function buildSystemPrompt() {
 - агрессивные продажи, «успейте», «лучше сегодня», списки из 5+ пунктов;
 - медицинские гарантии и диагнозы.
 
-Примеры тона:
-${examplesForPrompt("ru")}
+Язык (критично):
+- ${langRule}
+- Never switch language unless the client switches language first.
+- Текущий язык клиента: ${lang === "kz" ? "қазақша" : "русский"}.
 
-Язык ответа = язык клиента (ru или kz).
+Примеры тона:
+${examplesForPrompt(lang)}
 
 ${knowledgeForPrompt()}
 `.trim();

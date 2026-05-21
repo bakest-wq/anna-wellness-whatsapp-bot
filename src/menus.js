@@ -6,7 +6,7 @@ const ITEMS = {
     route: "price",
     ru: "💰 Узнать цены",
     kz: "💰 Бағалар",
-    labelRu: "Узнать цены",
+    labelRu: "Цены",
     labelKz: "Бағалар",
     descRu: "Прайс",
     descKz: "Бағалар"
@@ -75,7 +75,7 @@ const ITEMS = {
 
 const MENU_CONTEXTS = {
   main: {
-    items: ["price", "booking", "address", "contra"]
+    items: ["booking", "price", "address", "back"]
   },
   after_price: {
     items: ["booking", "practices", "address", "back"]
@@ -93,15 +93,15 @@ const MENU_CONTEXTS = {
     items: ["booking", "price", "address", "back"]
   },
   default: {
-    items: ["price", "booking", "address", "contra"]
+    items: ["booking", "price", "address", "back"]
   }
 };
 
 const MAIN_NUMERIC = {
-  1: "price",
-  2: "booking",
+  1: "booking",
+  2: "price",
   3: "address",
-  4: "contraindications"
+  4: "back"
 };
 
 const ID_TO_ROUTE = Object.fromEntries(Object.values(ITEMS).map((i) => [i.id, i.route]));
@@ -161,20 +161,20 @@ function getMenuTextBlock(language, context = "main") {
     if (lang === "ru") {
       return `Выберите, пожалуйста, что вам сейчас ближе:
 
-1️⃣ Узнать цены
-2️⃣ Записаться
+1️⃣ Записаться
+2️⃣ Цены
 3️⃣ Адрес
-4️⃣ Противопоказания
+4️⃣ Назад
 
 Можно просто отправить цифру 🌿`;
     }
 
     return `Қазір не жақын?
 
-1️⃣ Бағалар
-2️⃣ Жазылу
+1️⃣ Жазылу
+2️⃣ Бағалар
 3️⃣ Мекенжай
-4️⃣ Қарсы көрсетілім
+4️⃣ Артқа
 
 Санды жіберіңіз 🌿`;
   }
@@ -243,7 +243,10 @@ for (const item of Object.values(ITEMS)) {
   LABEL_TO_ROUTE[normalizeLabel(item.labelKz)] = item.route;
 }
 LABEL_TO_ROUTE["цены"] = "price";
+LABEL_TO_ROUTE["цена"] = "price";
 LABEL_TO_ROUTE["узнать цены"] = "price";
+LABEL_TO_ROUTE["бағалар"] = "price";
+LABEL_TO_ROUTE["баға"] = "price";
 LABEL_TO_ROUTE["запись"] = "booking";
 LABEL_TO_ROUTE["записаться"] = "booking";
 LABEL_TO_ROUTE["адрес"] = "address";

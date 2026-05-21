@@ -137,9 +137,9 @@ function scoreIntent(text, language, intentName, rule) {
     if (pattern.test(t)) score += 3;
   }
 
-  const kw = rule.keywords?.[language] || [];
-  const kwAlt = rule.keywords?.[language === "kz" ? "ru" : "kz"] || [];
-  for (const word of [...kw, ...kwAlt]) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const kw = rule.keywords?.[lang] || [];
+  for (const word of kw) {
     if (t.includes(word.toLowerCase())) score += 2;
   }
 

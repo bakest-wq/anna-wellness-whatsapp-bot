@@ -1,5 +1,5 @@
 const { detectClientIntent } = require("./intent");
-const { detectLanguage } = require("./language");
+const { resolveClientLanguage, normalizeLanguage } = require("./language");
 const { getScenarioResponse } = require("./responses");
 const { getAiReply } = require("./ai");
 const { getSession, updateSession } = require("./sessionStore");
@@ -87,7 +87,9 @@ async function handleIncomingMessage({
   const session = getSession(userId);
   clearEmotionalHoldIfExpired(session);
 
-  const language = detectLanguage(incomingText, session.language);
+  const language = normalizeLanguage(
+    resolveClientLanguage(incomingText, session.language, { isButton })
+  );
   session.language = language;
 
   const distressed = detectEmotionalDistress(incomingText);

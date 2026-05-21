@@ -1,7 +1,7 @@
 const { logger } = require("./logger");
 const { isDuplicate } = require("./messageDedup");
 const { getSession, updateSession } = require("./sessionStore");
-const { detectLanguage } = require("./language");
+const { normalizeLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
 const { enrichOutboundMessages, getMenuTextBlock } = require("./menus");
 const {
@@ -82,7 +82,7 @@ async function processIncomingMessage({
   const outbound = result?.messages || (reply ? [{ type: "text", text: reply }] : []);
 
   const sessionAfter = getSession(payload.userId);
-  const lang = sessionAfter.language || detectLanguage(payload.text);
+  const lang = normalizeLanguage(sessionAfter.language);
   const menuContext = result?.menuContext || "main";
 
   const toSend = result?.skipMenu
