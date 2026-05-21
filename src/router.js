@@ -11,6 +11,11 @@ const {
   isBreathingLifeQuestion,
   isBreathingGayaEarthflowQuestion
 } = require("./content/breathingLife");
+const {
+  getPracticesPickerReply,
+  getPracticeDetailReply,
+  PRACTICE_ROUTES
+} = require("./content/practices");
 
 function routeIncomingText(text, buttonId, menuContext = "main") {
   const raw = String(text || "").trim();
@@ -42,6 +47,10 @@ function routeIncomingText(text, buttonId, menuContext = "main") {
 }
 
 function getRouteReply(routeName, language) {
+  if (PRACTICE_ROUTES.includes(routeName)) {
+    return getPracticeDetailReply(routeName, language);
+  }
+
   switch (routeName) {
     case "price":
       return getScenarioResponse("price", language);
@@ -57,7 +66,7 @@ function getRouteReply(routeName, language) {
 
     case "practices":
     case "services":
-      return getScenarioResponse("services", language);
+      return getPracticesPickerReply(language);
 
     case "session":
       return getScenarioResponse("session", language);
@@ -80,23 +89,37 @@ function getRouteReply(routeName, language) {
 }
 
 function wrapOutbound(routeReply, routeName, language, options = {}) {
-  const menuContext = options.menuContext || getMenuContextForRoute(routeName);
+  let menuContext = options.menuContext || getMenuContextForRoute(routeName);
+  let messages = null;
+  let replyText = routeReply;
 
-  if (!routeReply) {
+  if (routeReply && typeof routeReply === "object") {
+    if (routeReply.menuContext) menuContext = routeReply.menuContext;
+    if (routeReply.messages) {
+      return {
+        reply: routeReply.messages.find((m) => m.type === "text")?.text || null,
+        messages: routeReply.messages,
+        menuContext
+      };
+    }
+    replyText = routeReply.text || routeReply.reply || null;
+  }
+
+  if (!replyText && !messages) {
     return { reply: null, messages: [], menuContext };
   }
 
-  if (routeReply.messages) {
+  if (messages) {
     return {
-      reply: routeReply.messages.find((m) => m.type === "text")?.text || null,
-      messages: routeReply.messages,
+      reply: messages.find((m) => m.type === "text")?.text || null,
+      messages,
       menuContext
     };
   }
 
   return {
-    reply: routeReply,
-    messages: [{ type: "text", text: routeReply }],
+    reply: replyText,
+    messages: [{ type: "text", text: replyText }],
     menuContext
   };
 }

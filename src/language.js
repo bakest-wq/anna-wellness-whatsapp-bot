@@ -62,7 +62,7 @@ const RU_STRONG_MARKERS = [
   "меню"
 ];
 
-const MENU_NUMERIC = /^([1-4])[️⃣]?\s*$/u;
+const MENU_NUMERIC = /^([1-8])[️⃣]?\s*$/u;
 
 function detectMessageLanguage(text) {
   const t = String(text || "").trim().toLowerCase();
@@ -101,7 +101,7 @@ function resolveClientLanguage(text, sessionLanguage = "ru", options = {}) {
     return session;
   }
 
-  if (/^[1-4]$/.test(t)) {
+  if (/^[1-8]$/.test(t)) {
     return session;
   }
 

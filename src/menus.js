@@ -1,4 +1,10 @@
 const { BRAND, getMenuBody, getMenuFooter } = require("./brand");
+const {
+  PRACTICE_PICKER,
+  getPracticePickerMenuBlock,
+  resolvePracticePickerChoice,
+  registerPracticeLabels
+} = require("./content/practices");
 
 const ITEMS = {
   price: {
@@ -51,6 +57,16 @@ const ITEMS = {
     descRu: "Что мы делаем",
     descKz: "Практикалар"
   },
+  practices_more: {
+    id: "btn_practices_more",
+    route: "practices",
+    ru: "🌿 Другие практики",
+    kz: "🌿 Басқа практикалар",
+    labelRu: "Другие практики",
+    labelKz: "Басқа практикалар",
+    descRu: "Список практик",
+    descKz: "Практикалар тізімі"
+  },
   session: {
     id: "btn_session",
     route: "session",
@@ -75,25 +91,40 @@ const ITEMS = {
 
 const MENU_CONTEXTS = {
   main: {
-    items: ["booking", "price", "address", "back"]
+    items: ["booking", "price", "address", "back"],
+    maxChoice: 4
+  },
+  practices_picker: {
+    type: "practice_picker",
+    maxChoice: 8
+  },
+  after_practice_detail: {
+    items: ["booking", "contra", "practices_more", "back"],
+    maxChoice: 4
   },
   after_price: {
-    items: ["booking", "practices", "address", "back"]
+    items: ["booking", "practices", "address", "back"],
+    maxChoice: 4
   },
   after_address: {
-    items: ["booking", "price", "session", "back"]
+    items: ["booking", "price", "session", "back"],
+    maxChoice: 4
   },
   after_contra: {
-    items: ["booking", "practices", "back"]
+    items: ["booking", "practices", "back"],
+    maxChoice: 4
   },
   after_practices: {
-    items: ["booking", "price", "address", "back"]
+    items: ["booking", "price", "address", "back"],
+    maxChoice: 4
   },
   after_session: {
-    items: ["booking", "price", "address", "back"]
+    items: ["booking", "price", "address", "back"],
+    maxChoice: 4
   },
   default: {
-    items: ["booking", "price", "address", "back"]
+    items: ["booking", "price", "address", "back"],
+    maxChoice: 4
   }
 };
 
@@ -105,13 +136,23 @@ const MAIN_NUMERIC = {
 };
 
 const ID_TO_ROUTE = Object.fromEntries(Object.values(ITEMS).map((i) => [i.id, i.route]));
+for (const p of PRACTICE_PICKER) {
+  ID_TO_ROUTE[p.buttonId] = p.route;
+}
 
 const ROUTE_TO_MENU = {
   price: "after_price",
   address: "after_address",
   contraindications: "after_contra",
-  practices: "after_practices",
-  services: "after_practices",
+  practices: "practices_picker",
+  services: "practices_picker",
+  practice_five: "after_practice_detail",
+  practice_five_fire: "after_practice_detail",
+  practice_five_bamboo: "after_practice_detail",
+  practice_mukaino: "after_practice_detail",
+  practice_breath: "after_practice_detail",
+  practice_earthflow: "after_practice_detail",
+  practice_bars: "after_practice_detail",
   session: "after_session",
   five_comparison: "after_practices",
   breathing_life: "after_practices",
@@ -127,15 +168,41 @@ function getMenuContextForRoute(routeName) {
   return ROUTE_TO_MENU[routeName] || "default";
 }
 
+function getContextMaxChoice(context) {
+  const cfg = MENU_CONTEXTS[context] || MENU_CONTEXTS.default;
+  return cfg.maxChoice || 4;
+}
+
 function getContextItems(context) {
   const cfg = MENU_CONTEXTS[context] || MENU_CONTEXTS.default;
+  if (cfg.type === "practice_picker") return [];
   return cfg.items.map((key) => ITEMS[key]).filter(Boolean);
 }
 
 function buildMenuBlock(language, context, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
-  const items = getContextItems(context);
 
+  if (context === "practices_picker") {
+    const buttons = [
+      ...PRACTICE_PICKER.map((p) => ({
+        buttonId: p.buttonId,
+        buttonText: lang === "kz" ? p.labelKz : p.labelRu
+      })),
+      {
+        buttonId: "btn_practices_back",
+        buttonText: lang === "kz" ? "⬅️ Артқа" : "⬅️ Назад"
+      }
+    ];
+    return {
+      context,
+      header: BRAND.header,
+      body: options.fullBody ? getMenuBody(language) : "👇",
+      footer: getMenuFooter(),
+      buttons
+    };
+  }
+
+  const items = getContextItems(context);
   const buttons = items.map((item) => ({
     buttonId: item.id,
     buttonText: item[lang],
@@ -153,9 +220,12 @@ function buildMenuBlock(language, context, options = {}) {
   };
 }
 
-/** Текстовое меню с цифрами — всегда в теле сообщения */
 function getMenuTextBlock(language, context = "main") {
   const lang = language === "kz" ? "kz" : "ru";
+
+  if (context === "practices_picker") {
+    return getPracticePickerMenuBlock(language);
+  }
 
   if (context === "main" || context === "default") {
     if (lang === "ru") {
@@ -195,7 +265,10 @@ function getTextMenuFallback(language, context = "main") {
 
 function messageAlreadyHasMenu(text) {
   if (!text) return false;
-  return /[1-4]️⃣/.test(text) || /Можно просто отправить цифру|Санды жіберіңіз 🌿/.test(text);
+  return (
+    /[1-8]️⃣/.test(text) ||
+    /Можно просто отправить цифру|Санды жіберіңіз 🌿|Можно отправить цифру 🌿/.test(text)
+  );
 }
 
 function appendMenuToReply(reply, language, context = "main") {
@@ -230,7 +303,7 @@ function enrichOutboundMessages(messages, language, context = "main") {
 function normalizeLabel(text) {
   return String(text || "")
     .trim()
-    .replace(/^[\s💰📅📍⚠️🌿⬅️1-4️⃣]+/u, "")
+    .replace(/^[\s💰📅📍⚠️🌿⬅️0-9️⃣]+/u, "")
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
@@ -257,13 +330,22 @@ LABEL_TO_ROUTE["подробнее о практиках"] = "practices";
 LABEL_TO_ROUTE["практикалар"] = "practices";
 LABEL_TO_ROUTE["как проходит сеанс"] = "session";
 LABEL_TO_ROUTE["сеанс қалай"] = "session";
+registerPracticeLabels(LABEL_TO_ROUTE, normalizeLabel);
 
 function parseNumericChoice(text, menuContext) {
   const raw = String(text || "").trim();
-  const digit = raw.match(/^([1-4])[️⃣]?\s*$/u) || raw.match(/^([1-4])$/);
+  const max = getContextMaxChoice(menuContext);
+  const digitRe = new RegExp(`^([1-${max}])[️⃣]?\\s*$`, "u");
+  const digit = raw.match(digitRe) || raw.match(new RegExp(`^([1-${max}])$`));
   if (!digit) return null;
 
   const n = Number(digit[1]);
+
+  if (menuContext === "practices_picker") {
+    if (n === 8) return "back";
+    return PRACTICE_PICKER[n - 1]?.route || null;
+  }
+
   if (menuContext === "main" || menuContext === "default") {
     return MAIN_NUMERIC[n] || null;
   }
@@ -275,6 +357,11 @@ function parseNumericChoice(text, menuContext) {
 function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
   if (buttonId && ID_TO_ROUTE[buttonId]) return ID_TO_ROUTE[buttonId];
 
+  if (menuContext === "practices_picker") {
+    const picked = resolvePracticePickerChoice(buttonText, buttonId);
+    if (picked) return picked;
+  }
+
   const raw = String(buttonText || "").trim();
   const numericRoute = parseNumericChoice(raw, menuContext);
   if (numericRoute) return numericRoute;
@@ -282,9 +369,14 @@ function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
   const normalized = normalizeLabel(buttonText);
   if (LABEL_TO_ROUTE[normalized]) return LABEL_TO_ROUTE[normalized];
 
-  const withSuffix = raw.match(/^([1-4])[️⃣]?[\s.)-–]/u);
+  const max = getContextMaxChoice(menuContext);
+  const withSuffix = raw.match(new RegExp(`^([1-${max}])[️⃣]?[\\s.)-–]`, "u"));
   if (withSuffix) {
     const n = Number(withSuffix[1]);
+    if (menuContext === "practices_picker") {
+      if (n === 8) return "back";
+      return PRACTICE_PICKER[n - 1]?.route || null;
+    }
     if (menuContext === "main" || menuContext === "default") {
       return MAIN_NUMERIC[n] || null;
     }
