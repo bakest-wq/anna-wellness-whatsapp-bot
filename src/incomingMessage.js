@@ -1,14 +1,16 @@
 const { logger } = require("./logger");
 const { isDuplicate } = require("./messageDedup");
-const { getSession } = require("./sessionStore");
+const { getSession, updateSession } = require("./sessionStore");
 const { detectLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
 const {
   parseIncomingMessage,
-  sendMainMenuButtons,
+  sendContextMenu,
   sendTextMenuFallback,
   sendOutboundMessages
 } = require("./whatsapp");
+
+const MENU_DELAY_MS = Number(process.env.MENU_AFTER_REPLY_DELAY_MS || 700);
 
 async function processIncomingMessage({
   body,
@@ -42,6 +44,8 @@ async function processIncomingMessage({
     return;
   }
 
+  const sessionBefore = getSession(payload.userId);
+
   console.log("INCOMING TEXT:", payload.text);
 
   if (payload.isButton) {
@@ -56,7 +60,7 @@ async function processIncomingMessage({
   let result;
 
   if (webhookTestReply) {
-    result = { reply: null, withMenu: true };
+    result = { reply: null, menuContext: "main", skipMenu: false };
   } else {
     result = await handleIncomingMessage({
       userId: payload.userId,
@@ -64,6 +68,7 @@ async function processIncomingMessage({
       buttonId: payload.buttonId,
       buttonText: payload.buttonText,
       isButton: payload.isButton,
+      menuContext: sessionBefore.menuContext || "main",
       openai,
       model,
       logger,
@@ -88,25 +93,39 @@ async function processIncomingMessage({
     });
   }
 
-  if (result?.withMenu) {
-    const session = getSession(payload.userId);
-    const lang = session.language || detectLanguage(payload.text);
+  const sessionAfter = getSession(payload.userId);
+  const menuContext = result?.menuContext || "main";
+
+  if (!result?.skipMenu) {
+    if (outbound.length) {
+      await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
+    }
 
     if (waConfig.provider === "green") {
-      await sendMainMenuButtons({
+      await sendContextMenu({
         config: waConfig,
         to: payload.userId,
-        language: lang,
+        language: sessionAfter.language || detectLanguage(payload.text),
+        menuContext,
         logger
       });
     } else {
       await sendTextMenuFallback({
         config: waConfig,
         to: payload.userId,
-        language: lang,
+        language: sessionAfter.language || detectLanguage(payload.text),
+        menuContext,
         logger
       });
     }
+
+    sessionAfter.menuContext = menuContext;
+    updateSession(payload.userId, sessionAfter);
+
+    logger.info("Context menu sent after reply", {
+      userId: payload.userId,
+      menuContext
+    });
   }
 }
 

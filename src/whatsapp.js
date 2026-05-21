@@ -4,10 +4,7 @@ const fs = require("fs");
 const { BRAND } = require("./brand");
 const { normalizePhone } = require("./validators");
 const { getTypingDelayMs } = require("./ux");
-const {
-  getInteractiveMenuBlock,
-  getTextMenuFallback
-} = require("./buttons");
+const { buildMenuBlock, getTextMenuFallback } = require("./menus");
 
 function toChatId(to) {
   const phone = normalizePhone(to).replace("+", "");
@@ -243,19 +240,9 @@ async function sendLocalImageGreen({ config, to, filePath, caption, logger }) {
   return true;
 }
 
-async function sendTextMenuFallback({ config, to, language, logger, reason }) {
-  logger.warn("Interactive menu unavailable, using text menu", {
-    to,
-    language,
-    reason: reason || "not_supported"
-  });
-  const text = getTextMenuFallback(language);
-  await sendWhatsAppGreen({ config, to, text, logger });
-}
-
-async function sendMainMenuButtons({ config, to, language, logger }) {
+async function sendContextMenu({ config, to, language, menuContext, logger }) {
   const chatId = toChatId(to);
-  const block = getInteractiveMenuBlock(language);
+  const block = buildMenuBlock(language, menuContext || "default");
   const buttons = block.buttons.map((b) => ({
     buttonId: b.buttonId,
     buttonText: b.buttonText
@@ -263,55 +250,58 @@ async function sendMainMenuButtons({ config, to, language, logger }) {
 
   try {
     await sendListMessageGreen(config, block, chatId, logger);
-    logger.info("Menu sent (sendListMessage, 4 options)", { chatId, language });
-    return { mode: "list" };
+    logger.info("Context menu sent (list)", { chatId, menuContext, count: buttons.length });
+    return { mode: "list", menuContext };
   } catch (listErr) {
-    logger.debug("sendListMessage failed, trying buttons", {
+    logger.debug("sendListMessage failed", {
+      menuContext,
       message: listErr?.response?.data?.message || listErr.message
     });
   }
 
   try {
-    await sendInteractiveButtonsReply(config, { ...block, buttons }, chatId, logger);
-    logger.info("Menu sent (sendInteractiveButtonsReply)", { chatId, language, count: buttons.length });
-    return { mode: "buttons" };
-  } catch (btnErr) {
-    if (buttons.length > 3) {
-      try {
-        await sendInteractiveButtonsReply(
-          config,
-          { ...block, buttons: buttons.slice(0, 3) },
-          chatId,
-          logger
-        );
-        await new Promise((r) => setTimeout(r, 500));
-        await sendInteractiveButtonsReply(
-          config,
-          {
-            header: BRAND.header,
-            body: language === "kz" ? "Тағы бір бөлім 🌿" : "Ещё один раздел 🌿",
-            footer: block.footer,
-            buttons: [buttons[3]]
-          },
-          chatId,
-          logger
-        );
-        logger.info("Menu sent (buttons split 3+1)", { chatId, language });
-        return { mode: "buttons_split" };
-      } catch (splitErr) {
-        logger.debug("buttons split failed", { message: splitErr.message });
-      }
+    if (buttons.length <= 3) {
+      await sendInteractiveButtonsReply(config, { ...block, buttons }, chatId, logger);
+      logger.info("Context menu sent (buttons)", { chatId, menuContext });
+      return { mode: "buttons", menuContext };
     }
 
-    await sendTextMenuFallback({
+    await sendInteractiveButtonsReply(
       config,
-      to,
-      language,
-      logger,
-      reason: btnErr?.response?.data?.message || btnErr.message
-    });
-    return { mode: "text_fallback" };
+      { ...block, buttons: buttons.slice(0, 3) },
+      chatId,
+      logger
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    await sendInteractiveButtonsReply(
+      config,
+      {
+        header: BRAND.header,
+        body: language === "kz" ? "Тағы 👇" : "Ещё 👇",
+        footer: block.footer,
+        buttons: buttons.slice(3)
+      },
+      chatId,
+      logger
+    );
+    return { mode: "buttons_split", menuContext };
+  } catch (btnErr) {
+    logger.debug("buttons failed, text fallback", { message: btnErr.message });
   }
+
+  const text = getTextMenuFallback(language, menuContext);
+  await sendWhatsAppGreen({ config, to, text, logger });
+  return { mode: "text_fallback", menuContext };
+}
+
+async function sendMainMenuButtons({ config, to, language, logger, menuContext = "main" }) {
+  return sendContextMenu({ config, to, language, menuContext, logger });
+}
+
+async function sendTextMenuFallback({ config, to, language, logger, menuContext = "main" }) {
+  const text = getTextMenuFallback(language, menuContext);
+  await sendWhatsAppGreen({ config, to, text, logger });
+  return { mode: "text_fallback", menuContext };
 }
 
 async function sendWhatsAppCloud({ config, to, text, logger }) {
@@ -385,6 +375,7 @@ module.exports = {
   parseIncomingMessage,
   sendWhatsApp,
   sendMainMenuButtons,
+  sendContextMenu,
   sendTextMenuFallback,
   sendOutboundMessages,
   sendTypingGreen

@@ -44,6 +44,7 @@ function defaultSession() {
     booking: null,
     profile: { name: "", phone: "", visits: 0 },
     lastIntent: null,
+    menuContext: "main",
     updatedAt: new Date().toISOString()
   };
 }
