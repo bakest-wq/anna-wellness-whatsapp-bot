@@ -1,4 +1,4 @@
-const { SALON } = require("./knowledge");
+const { WELLNESS } = require("./knowledge");
 
 function normalizePhone(phone) {
   let p = String(phone || "").replace(/[^\d+]/g, "");
@@ -29,7 +29,7 @@ function isValidBookingTime(text) {
   const open = 9 * 60;
   const close = 20 * 60;
   if (minutes < open || minutes > close) {
-    return { ok: false, reason: "range", schedule: SALON };
+    return { ok: false, reason: "range", schedule: WELLNESS };
   }
   return { ok: true, parsed: `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}` };
 }

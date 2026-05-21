@@ -1,8 +1,12 @@
-const SALON = {
+const { BRAND } = require("./brand");
+
+const WELLNESS = {
+  brand: BRAND.name,
   master: "Анна Абдулрашидовна",
   address: "Актобе, район Батыс, Ораз Татеулы 15",
   schedule: "09:00–22:00",
-  lastBooking: "20:00"
+  lastBooking: "20:00",
+  tagline: BRAND.subtitle
 };
 
 const SERVICES = [
@@ -68,18 +72,21 @@ function knowledgeForPrompt() {
   ).join("\n");
 
   return `
-Мастер: ${SALON.master}
-Адрес: ${SALON.address}
-График: ${SALON.schedule}
-Последняя запись: ${SALON.lastBooking}
+Бренд: ${WELLNESS.brand} — premium wellness studio (не салон красоты).
+Стиль: безопасное пространство, мягкая поддержка, восстановление внутреннего состояния. Не продавать при усталости/тревоге.
+Мастер: ${WELLNESS.master}
+Адрес: ${WELLNESS.address}
+График: ${WELLNESS.schedule}
+Последняя запись: ${WELLNESS.lastBooking}
 
-Услуги:
+Практики и ритуалы:
 ${servicesText}
 `.trim();
 }
 
 module.exports = {
-  SALON,
+  WELLNESS,
+  SALON: WELLNESS,
   SERVICES,
   FAQ,
   servicesListText,

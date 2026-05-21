@@ -7,7 +7,8 @@ const OpenAI = require("openai");
 const { logger } = require("./logger");
 const { verifyWhatsAppCloudSignature, verifyGreenWebhook } = require("./webhookAuth");
 const { persistLead } = require("./sheets");
-const { SALON, SERVICES, FAQ } = require("./knowledge");
+const { WELLNESS, SERVICES, FAQ } = require("./knowledge");
+const { BRAND } = require("./brand");
 const { processIncomingMessage } = require("./incomingMessage");
 const { parseIncomingFromGreen, sendWhatsApp } = require("./whatsapp");
 
@@ -117,7 +118,9 @@ app.get("/", (_, res) => {
   res.json({
     ok: true,
     version: "pro",
-    service: "Anna wellness WhatsApp AI bot",
+    service: `${BRAND.name} WhatsApp AI bot`,
+    brand: BRAND.name,
+    tagline: BRAND.tagline,
     provider: WHATSAPP_PROVIDER,
     routes: ["POST /webhook", "POST /webhook/whatsapp"]
   });
@@ -127,9 +130,11 @@ app.get("/faq", (_, res) => res.json(FAQ));
 
 app.get("/services", (_, res) => {
   res.json({
-    master: SALON.master,
-    address: SALON.address,
-    schedule: `${SALON.schedule} (последняя запись ${SALON.lastBooking})`,
+    brand: WELLNESS.brand,
+    tagline: WELLNESS.tagline,
+    master: WELLNESS.master,
+    address: WELLNESS.address,
+    schedule: `${WELLNESS.schedule} (последняя запись ${WELLNESS.lastBooking})`,
     services: SERVICES
   });
 });
@@ -154,7 +159,7 @@ app.get("/webhook/whatsapp", (req, res) => {
 app.post("/webhook/whatsapp", processWebhook);
 
 app.listen(PORT, () => {
-  logger.info(`Anna Wellness Bot PRO started on :${PORT}`, {
+  logger.info(`${BRAND.name} Bot PRO started on :${PORT}`, {
     provider: WHATSAPP_PROVIDER,
     green: Boolean(waConfig.greenId && waConfig.greenToken),
     openai: Boolean(process.env.OPENAI_API_KEY),

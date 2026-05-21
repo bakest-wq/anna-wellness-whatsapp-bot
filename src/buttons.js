@@ -1,4 +1,4 @@
-const { SALON } = require("./knowledge");
+const { BRAND, getMenuBody, getMenuFooter } = require("./brand");
 
 const BUTTON_IDS = {
   PRICE: "btn_price",
@@ -19,83 +19,91 @@ const ID_TO_INTENT = {
 };
 
 const MENU_ITEMS = [
-  { id: BUTTON_IDS.PRICE, intent: "price", ru: "Узнать цены", kz: "Бағалар" },
-  { id: BUTTON_IDS.BOOKING, intent: "booking", ru: "Записаться", kz: "Жазылу" },
-  { id: BUTTON_IDS.ADDRESS, intent: "address", ru: "Адрес", kz: "Мекенжай" },
-  { id: BUTTON_IDS.CONTRA, intent: "contraindications", ru: "Противопоказания", kz: "Қарсы көрсетілім" }
+  {
+    id: BUTTON_IDS.PRICE,
+    intent: "price",
+    ru: "💰 Узнать цены",
+    kz: "💰 Бағалар",
+    descRu: "Прайс практик",
+    descKz: "Практика бағасы"
+  },
+  {
+    id: BUTTON_IDS.BOOKING,
+    intent: "booking",
+    ru: "📅 Записаться",
+    kz: "📅 Жазылу",
+    descRu: "Подбор сеанса",
+    descKz: "Сеансқа жазылу"
+  },
+  {
+    id: BUTTON_IDS.ADDRESS,
+    intent: "address",
+    ru: "📍 Адрес",
+    kz: "📍 Мекенжай",
+    descRu: "Как добраться",
+    descKz: "Қалай жетуге болады"
+  },
+  {
+    id: BUTTON_IDS.CONTRA,
+    intent: "contraindications",
+    ru: "⚠️ Противопоказания",
+    kz: "⚠️ Қарсы көрсетілім",
+    descRu: "Бережные рекомендации",
+    descKz: "Абайлау керек жағдайлар"
+  }
 ];
 
-function getGreetingBody(language) {
-  if (language === "kz") {
-    return "Сәлеметсіз бе 🌿\nӨтінім, қызығушылық бөлімді таңдаңыз.";
-  }
-  return "Здравствуйте 🌿\nВыберите, пожалуйста, интересующий раздел.";
+function getMenuButtons(language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  return MENU_ITEMS.map((item) => ({
+    buttonId: item.id,
+    buttonText: item[lang],
+    rowId: item.id,
+    title: item[lang],
+    description: lang === "kz" ? item.descKz : item.descRu
+  }));
 }
 
-function getInteractiveMenu(language) {
+/** Одно сообщение: интерактивный список (4 пункта) или кнопки */
+function getInteractiveMenuBlock(language) {
   const lang = language === "kz" ? "kz" : "ru";
-  const labels = MENU_ITEMS.map((item) => ({
-    buttonId: item.id,
-    buttonText: item[lang]
-  }));
+  const buttons = getMenuButtons(language);
 
   return {
-    header: "Sakina Beauty 🌿",
-    body: getGreetingBody(language),
-    footer: `${SALON.master} · wellness · Актобе`,
-    buttons: labels
+    header: BRAND.header,
+    body: getMenuBody(language),
+    footer: getMenuFooter(),
+    listButtonText: lang === "kz" ? "Мәзір 🌿" : "Меню 🌿",
+    sectionTitle: lang === "kz" ? "Бөлімдер" : "Разделы",
+    buttons,
+    sections: [
+      {
+        title: lang === "kz" ? "Sakina Wellness" : "Sakina Wellness",
+        rows: buttons.map((b) => ({
+          title: b.title,
+          rowId: b.rowId,
+          description: b.description
+        }))
+      }
+    ]
   };
 }
 
+/** @deprecated — оставлено для совместимости; теперь одно сообщение */
 function getInteractiveMenuParts(language) {
-  const menu = getInteractiveMenu(language);
-  return [
-    {
-      header: menu.header,
-      body: menu.body,
-      footer: menu.footer,
-      buttons: menu.buttons.slice(0, 3)
-    },
-    {
-      header: "Sakina Beauty 🌿",
-      body: language === "kz" ? "Тағы бір бөлім 🌿" : "Ещё один раздел 🌿",
-      footer: menu.footer,
-      buttons: [menu.buttons[3]]
-    }
-  ];
+  return [getInteractiveMenuBlock(language)];
 }
 
 function getTextMenuFallback(language) {
   const lang = language === "kz" ? "kz" : "ru";
-  const lines = MENU_ITEMS.map((item, i) => `${i + 1} — ${item[lang]}`).join("\n");
+  const lines = MENU_ITEMS.map((item, i) => `${i + 1}. ${item[lang]}`).join("\n");
 
   if (lang === "kz") {
-    return `${getGreetingBody(language)}\n\n${lines}\n\nӨтінім, санды жіберіңіз (мысалы: 2).`;
+    return `${getMenuBody(language)}\n\n${lines}\n\nӨтінім, санды жіберіңіз (мысалы: 2) 🌿`;
   }
 
-  return `${getGreetingBody(language)}\n\n${lines}\n\nПожалуйста, отправьте цифру (например: 2).`;
+  return `${getMenuBody(language)}\n\n${lines}\n\nПожалуйста, отправьте цифру (например: 2) 🌿`;
 }
-
-const TEXT_TO_INTENT = {
-  ru: {
-    "узнать цены": "price",
-    "💰 узнать цены": "price",
-    "цены": "price",
-    "записаться": "booking",
-    "📅 записаться": "booking",
-    "запись": "booking",
-    "адрес": "address",
-    "📍 адрес": "address",
-    "противопоказания": "contraindications",
-    "⚠️ противопоказания": "contraindications"
-  },
-  kz: {
-    "бағалар": "price",
-    "жазылу": "booking",
-    "мекенжай": "address",
-    "қарсы көрсетілім": "contraindications"
-  }
-};
 
 function resolveNumericMenu(text) {
   const t = String(text || "").trim();
@@ -110,28 +118,36 @@ function resolveNumericMenu(text) {
 
 function resolveButtonIntent(buttonId, buttonText) {
   if (buttonId && ID_TO_INTENT[buttonId]) return ID_TO_INTENT[buttonId];
+
+  const normalized = String(buttonText || "")
+    .trim()
+    .replace(/^[\s💰📅📍⚠️]+/u, "")
+    .toLowerCase();
+
+  const map = {
+    "узнать цены": "price",
+    "цены": "price",
+    "бағалар": "price",
+    "записаться": "booking",
+    "запись": "booking",
+    "жазылу": "booking",
+    "адрес": "address",
+    "мекенжай": "address",
+    "противопоказания": "contraindications",
+    "қарсы көрсетілім": "contraindications"
+  };
+
+  if (map[normalized]) return map[normalized];
+
   return resolveNumericMenu(buttonText);
-}
-
-function getBookingCta(language) {
-  return language === "kz"
-    ? "\n\nЖазылғыңыз келсе — қуана көмектесемін 🌿"
-    : "\n\nЕсли захотите записаться — с радостью помогу 🌿";
-}
-
-function enrichScenarioReply(intent, reply, language) {
-  if (!reply || intent === "booking" || intent === "greeting") return reply;
-  if (reply.includes("запис") || reply.includes("жазыл")) return reply;
-  return reply + getBookingCta(language);
 }
 
 module.exports = {
   BUTTON_IDS,
-  getGreetingBody,
-  getInteractiveMenu,
+  MENU_ITEMS,
+  getInteractiveMenuBlock,
   getInteractiveMenuParts,
   getTextMenuFallback,
   resolveButtonIntent,
-  resolveNumericMenu,
-  enrichScenarioReply
+  resolveNumericMenu
 };

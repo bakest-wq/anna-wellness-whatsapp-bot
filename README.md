@@ -1,244 +1,109 @@
-# WhatsApp AI-бот для wellness-мастера Анны Абдулрашидовны
+# Sakina Wellness 🌿 — WhatsApp AI-бот
 
-Node.js backend для WhatsApp-бота, который:
-- отвечает клиентам на русском/казахском языке;
-- соблюдает мягкий премиальный стиль общения;
-- собирает заявку на запись по шагам;
-- отправляет заявку администратору в Telegram и/или WhatsApp;
-- сохраняет заявки в Google Sheets и/или внешний CRM webhook;
-- использует OpenAI API для диалогов.
+**wellness · body care · relaxation · Aktobe**
 
-## 1) Возможности
+Node.js backend для WhatsApp-бота premium wellness studio **Sakina Wellness** (мастер Анна Абдулрашидовна).
 
-- Автоопределение языка клиента (русский/казахский).
-- Диалоговый стиль: мягко, коротко, на "вы", без давления.
-- Безопасные ограничения:
-  - не ставит диагнозы;
-  - не обещает лечение;
-  - не дает медицинских гарантий.
-- Логика записи:
-  - имя;
-  - телефон;
-  - интересующая практика;
-  - желаемый день;
-  - желаемое время;
-  - противопоказания.
-- После сбора: бот отправляет клиенту:
-  - `Благодарю вас 🌿 Я передам вашу заявку администратору. Вам напишут и подтвердят удобное время.`
-- Формирует и отправляет администратору заявку формата:
-  - `🌿 Новая заявка с WhatsApp ...`
-- Улучшенный NLP-детектор намерения «хочу записаться» (RU/KZ + опционально OpenAI).
-- Защита webhook по подписи (Meta `X-Hub-Signature-256`, Green token).
-- Логирование событий в файл `logs/app.log`.
-- FAQ-данные по:
-  - массажу "5 континентов";
-  - Mukaino M-Test;
-  - Microcorn;
-  - противопоказаниям;
-  - подготовке;
-  - ощущениям после сеанса.
+Бот ведёт диалог в мягком премиальном тоне wellness/spa-пространства — глубокое расслабление, восстановление тела и внутреннего состояния (не салон красоты).
 
-## 2) Услуги и данные салона (вшиты в промпт)
+## Возможности
 
-- Адрес: `Актобе, район Батыс, Ораз Татеулы 15`
-- График: `09:00-22:00`, последняя запись `20:00`
-- Услуги:
-  - Массаж "5 континентов" — 2-2,5 часа — 30 000 ₸
-  - Массаж "5 континентов" с огнем — 2-2,5 часа — 35 000 ₸
-  - Массаж "5 континентов" с бамбуковыми банками — 2-2,5 часа — 33 000 ₸
-  - Mukaino M-Test — 30-40 минут — 10 000 ₸
-  - Дыхательная практика — 1 час — 20 000 ₸
-  - EarthFlow — 1 час — 20 000 ₸
-  - Access Bars — 1 час — 15 000 ₸
+- Автоопределение языка (русский / казахский).
+- Приветствие бренда Sakina Wellness с предложением узнать о практиках или записаться на сеанс.
+- Одно меню WhatsApp: список из 4 пунктов (💰 📅 📍 ⚠️) + fallback.
+- Пауза «печатает…» 1–2 сек перед ответом.
+- Адрес: текст + Google Maps + 2GIS + фото кабинета (опционально).
+- Запись: практика → день → время → телефон (номер — в конце, без спешки).
+- Эмоционально бережный тон: поддержка при усталости/тревоге без продаж (см. `docs/emotional-conversation-examples.md`).
+- Точная маршрутизация: цены, запись, адрес, противопоказания.
+- Сбор заявки на сеанс по шагам (имя, телефон, практика, день, время, противопоказания).
+- Уведомления администратору в Telegram и WhatsApp.
+- Сохранение заявок в Google Sheets / CRM webhook.
+- OpenAI для свободных вопросов с system prompt в стиле wellness studio.
+- Подробные описания по запросу: «5 континентов» (огонь vs бамбук), «Дыхание Жизни», Gaya Touch + EarthFlow.
 
-## 3) Установка
+## Практики и студия
+
+| Практика | Длительность | Цена |
+|----------|--------------|------|
+| Массаж «5 континентов» | 2–2,5 ч | 30 000 ₸ |
+| «5 континентов» с огнём | 2–2,5 ч | 35 000 ₸ |
+| «5 континентов» с бамбуковыми банками | 2–2,5 ч | 33 000 ₸ |
+| Mukaino M-Test | 30–40 мин | 10 000 ₸ |
+| Дыхательная практика «Дыхание Жизни» | 60–90 мин | 20 000 ₸ |
+| EarthFlow | 1 ч | 20 000 ₸ |
+| Access Bars | 1 ч | 15 000 ₸ |
+
+- **Адрес:** Актобе, район Батыс, Ораз Татеулы 15  
+- **График:** 09:00–22:00, последняя запись 20:00  
+- **Мастер:** Анна Абдулрашидовна  
+
+## Установка
 
 ```bash
 npm install
-```
-
-Создайте `.env` на основе примера:
-
-```bash
 cp .env.example .env
 ```
 
-Заполните ключи:
-- `OPENAI_API_KEY`
-- для WhatsApp:
-  - либо Cloud API: `WHATSAPP_PROVIDER=cloud` + Meta-поля;
-  - либо Green API: `WHATSAPP_PROVIDER=green` + Green-поля.
-- для Telegram:
-  - `TELEGRAM_BOT_TOKEN`
-  - `TELEGRAM_CHAT_ID`
+Заполните `.env`: OpenAI, WhatsApp (Green API или Cloud API), Telegram, при необходимости Google Sheets.
 
-## 4) Запуск
+## Запуск
 
 ```bash
 npm run dev
-```
-
-или:
-
-```bash
+# или
 npm start
 ```
 
-Сервер стартует на `PORT` (по умолчанию `3000`).
+Сервер: `http://localhost:3000` (порт из `PORT`).
 
-## 5) Интеграция WhatsApp
+## Webhook (Green API)
 
-## Вариант A: WhatsApp Cloud API (Meta)
+В кабинете Green API укажите URL:
 
-1. Установите в `.env`:
-   - `WHATSAPP_PROVIDER=cloud`
-   - `WHATSAPP_CLOUD_TOKEN`
-   - `WHATSAPP_PHONE_NUMBER_ID`
-   - `WHATSAPP_VERIFY_TOKEN`
-2. Укажите webhook URL:
-   - `GET /webhook/whatsapp` (верификация)
-   - `POST /webhook/whatsapp` (входящие сообщения)
-3. В Meta App Dashboard задайте verify token = `WHATSAPP_VERIFY_TOKEN`.
-
-## Вариант B: Green API
-
-1. Установите в `.env`:
-   - `WHATSAPP_PROVIDER=green`
-   - `GREEN_API_ID_INSTANCE`
-   - `GREEN_API_TOKEN`
-2. В Green API настройте webhook на:
-   - `POST /webhook/whatsapp`
-
-## 6) Google Sheets (CRM)
-
-1. Создайте Google Sheet с вкладкой `Leads`.
-2. В первой строке добавьте заголовки:
-
-`createdAt | name | phone | language | service | day | time | contraindications | comment | source | userId`
-
-3. Создайте Service Account в Google Cloud и включите Google Sheets API.
-4. Скачайте JSON-ключ в `credentials/google-service-account.json`.
-5. Дайте service account email доступ **Editor** к таблице.
-6. В `.env` включите:
-
-```env
-GOOGLE_SHEETS_ENABLED=true
-GOOGLE_SHEETS_SPREADSHEET_ID=...
-GOOGLE_SHEETS_TAB=Leads
-GOOGLE_APPLICATION_CREDENTIALS=./credentials/google-service-account.json
+```
+POST https://your-domain/webhook
 ```
 
-После каждой завершенной заявки бот добавляет новую строку.
+Также поддерживается `POST /webhook/whatsapp`.
 
-## 7) Внешний CRM webhook (опционально)
+## Переменные окружения
 
-Если у вас есть CRM с входящим webhook, укажите:
+См. `.env.example`. Основные:
 
-```env
-CRM_WEBHOOK_URL=https://your-crm.example/hooks/leads
-```
+- `OPENAI_API_KEY`, `OPENAI_MODEL`
+- `WHATSAPP_PROVIDER=green` или `cloud`
+- `GREEN_API_ID_INSTANCE`, `GREEN_API_TOKEN`
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+- `ADMIN_PHONE` — WhatsApp администратора
 
-Бот отправит JSON:
+## API
 
-```json
-{
-  "type": "whatsapp_lead",
-  "createdAt": "...",
-  "name": "...",
-  "phone": "...",
-  "language": "...",
-  "service": "...",
-  "day": "...",
-  "time": "...",
-  "contraindications": "...",
-  "comment": "...",
-  "source": "WhatsApp AI-бот",
-  "userId": "..."
-}
-```
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/` | Health-check, brand metadata |
+| GET | `/services` | Практики, адрес, график |
+| GET | `/faq` | FAQ JSON |
+| POST | `/webhook` | Входящие сообщения (Green) |
 
-## 8) NLP-детектор записи
+## Структура
 
-- Локальные правила: ключевые фразы RU/KZ + regex-паттерны + анти-фразы.
-- Если фраза «пограничная», включается AI-классификация (`BOOKING_INTENT_AI=true`).
-- Примеры, которые ловятся лучше:
-  - `хочу записаться на завтра`
-  - `можно забронировать массаж`
-  - `жазылғым келеді`
-  - `бос уақыт бар ма`
+- `src/brand.js` — бренд Sakina Wellness, приветствия, tagline
+- `src/knowledge.js` — практики, адрес, данные для промпта
+- `src/prompt.js` — system prompt (wellness studio)
+- `src/buttons.js` — меню и кнопки WhatsApp
+- `src/responses.js` — сценарии ответов
+- `src/router.js` — маршрутизация кнопок
+- `src/conversation.js` — диалог и запись
+- `src/content/` — длинные описания практик
 
-## 9) Безопасность webhook
+## Тон бренда
 
-### WhatsApp Cloud API
+- Премиальный, мягкий, спокойный, женственный.
+- Wellness studio · body & soul care · relaxation rituals.
+- Без медицинских обещаний и диагнозов.
 
-```env
-WHATSAPP_APP_SECRET=your_meta_app_secret
-WEBHOOK_REQUIRE_SIGNATURE=true
-```
+## Безопасность
 
-Проверяется заголовок `X-Hub-Signature-256` (HMAC SHA256 raw body).
-
-### Green API
-
-```env
-GREEN_WEBHOOK_SECRET=your_secret
-WEBHOOK_REQUIRE_SIGNATURE=true
-```
-
-Передавайте secret в webhook URL:
-
-`https://your-domain/webhook/whatsapp?token=your_secret`
-
-или в заголовке:
-
-`X-Green-Webhook-Token: your_secret`
-
-## 10) Логирование
-
-Логи пишутся в `logs/app.log`:
-
-- входящие сообщения;
-- старт/завершение записи;
-- ошибки webhook/интеграций;
-- сохранение в Google Sheets/CRM.
-
-Переменные:
-
-```env
-LOG_DIR=logs
-LOG_FILE=logs/app.log
-LOG_LEVEL=info
-```
-
-## 11) Интеграция Telegram
-
-1. Создайте бота через BotFather.
-2. Получите `TELEGRAM_BOT_TOKEN`.
-3. Узнайте `TELEGRAM_CHAT_ID` (личный/группы).
-4. После сбора заявки бот отправляет карточку в Telegram.
-
-Также бот пытается отправить ту же заявку в WhatsApp администратору:
-- номер: `+77711126089` (или `ADMIN_PHONE` из `.env`).
-
-## 12) API эндпоинты
-
-- `GET /` — health-check.
-- `GET /services` — адрес, график, список услуг.
-- `GET /faq` — FAQ JSON.
-- `GET /webhook/whatsapp` — verify webhook (Cloud API).
-- `POST /webhook/whatsapp` — входящие события от WhatsApp.
-
-## 13) Структура проекта
-
-- `src/server.js` — основной сервер и маршруты.
-- `src/intent.js` — NLP-детектор намерения записи.
-- `src/webhookAuth.js` — проверка подписи webhook.
-- `src/sheets.js` — Google Sheets + CRM webhook.
-- `src/logger.js` — файловое логирование.
-- `.env.example` — пример переменных окружения.
-
-## 14) Важно по безопасности и контенту
-
-- Не храните реальные ключи в репозитории.
-- Никогда не коммитьте файл `.env`.
-- Бот не является медицинским сервисом и не дает медицинских обещаний.
+- Не коммитьте `.env` и ключи.
+- Опционально: `WEBHOOK_REQUIRE_SIGNATURE=true` для проверки подписи webhook.

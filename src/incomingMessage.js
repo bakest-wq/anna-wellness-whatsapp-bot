@@ -5,9 +5,9 @@ const { detectLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
 const {
   parseIncomingMessage,
-  sendWhatsApp,
   sendMainMenuButtons,
-  sendTextMenuFallback
+  sendTextMenuFallback,
+  sendOutboundMessages
 } = require("./whatsapp");
 
 async function processIncomingMessage({
@@ -72,15 +72,20 @@ async function processIncomingMessage({
   }
 
   const reply = result?.reply || (typeof result === "string" ? result : null);
+  const outbound = result?.messages || (reply ? [{ type: "text", text: reply }] : []);
 
-  if (reply) {
-    await sendWhatsApp({
+  if (outbound.length) {
+    await sendOutboundMessages({
       config: waConfig,
       to: payload.userId,
-      text: reply,
+      messages: outbound,
       logger
     });
-    logger.info("Reply sent", { userId: payload.userId, preview: String(reply).slice(0, 90) });
+    logger.info("Reply sent", {
+      userId: payload.userId,
+      parts: outbound.length,
+      preview: String(outbound[0]?.text || outbound[0]?.type).slice(0, 90)
+    });
   }
 
   if (result?.withMenu) {

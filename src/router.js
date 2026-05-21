@@ -1,6 +1,6 @@
 const { getScenarioResponse } = require("./responses");
 const { BUTTON_IDS } = require("./buttons");
-const { SALON } = require("./knowledge");
+const { getAddressMessages } = require("./addressContent");
 const {
   getFiveContinentsDifference,
   isFiveContinentsComparisonQuestion
@@ -14,16 +14,24 @@ const {
 
 const EXACT_MENU_RU = {
   "узнать цены": "price",
+  "💰 узнать цены": "price",
   "записаться": "booking",
+  "📅 записаться": "booking",
   "адрес": "address",
-  "противопоказания": "contraindications"
+  "📍 адрес": "address",
+  "противопоказания": "contraindications",
+  "⚠️ противопоказания": "contraindications"
 };
 
 const EXACT_MENU_KZ = {
   "бағалар": "price",
+  "💰 бағалар": "price",
   "жазылу": "booking",
+  "📅 жазылу": "booking",
   "мекенжай": "address",
-  "қарсы көрсетілім": "contraindications"
+  "📍 мекенжай": "address",
+  "қарсы көрсетілім": "contraindications",
+  "⚠️ қарсы көрсетілім": "contraindications"
 };
 
 const BUTTON_ID_TO_ROUTE = {
@@ -102,9 +110,7 @@ function getRouteReply(routeName, language) {
       return getScenarioResponse("booking_start", language);
 
     case "address":
-      return language === "kz"
-        ? `Біз мұнда орналасқанбыз: ${SALON.address} 🌿`
-        : `Мы находимся: ${SALON.address} 🌿`;
+      return { messages: getAddressMessages(language) };
 
     case "contraindications":
       return getScenarioResponse("contraindications", language);
@@ -123,18 +129,38 @@ function getRouteReply(routeName, language) {
   }
 }
 
-function appendSoftBookingCta(reply, routeName, language) {
-  if (!reply || routeName === "booking") return reply;
-  const cta =
+function appendGentleClosing(reply, routeName, language, holdSales) {
+  if (!reply || typeof reply !== "string" || holdSales) return reply;
+  if (routeName === "booking" || routeName === "contraindications") return reply;
+  if (/осудят|асықпай|не спешить|қауіпсіз/i.test(reply)) return reply;
+
+  const closing =
     language === "kz"
-      ? "\n\nЖазылғыңыз келсе — қуана көмектесемін 🌿"
-      : "\n\nЕсли захотите записаться — с радостью помогу 🌿";
-  if (reply.includes("запис") || reply.includes("жазыл")) return reply;
-  return reply + cta;
+      ? "\n\nҚалағанда — жұмсақ айтып беремін 🤍"
+      : "\n\nЕсли захотите — мягко подскажу 🤍";
+  return reply + closing;
+}
+
+function normalizeRouteReply(routeReply, routeName, language, options = {}) {
+  if (!routeReply) return { reply: null, messages: [] };
+  const holdSales = options.holdSales;
+
+  if (routeReply.messages) {
+    const msgs = [...routeReply.messages];
+    const last = msgs[msgs.length - 1];
+    if (last?.type === "text") {
+      last.text = appendGentleClosing(last.text, routeName, language, holdSales);
+    }
+    return { reply: msgs.find((m) => m.type === "text")?.text || null, messages: msgs };
+  }
+
+  const text = appendGentleClosing(routeReply, routeName, language, holdSales);
+  return { reply: text, messages: [{ type: "text", text }] };
 }
 
 module.exports = {
   routeIncomingText,
   getRouteReply,
-  appendSoftBookingCta
+  appendGentleClosing,
+  normalizeRouteReply
 };

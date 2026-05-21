@@ -5,7 +5,21 @@ const { getAiReply } = require("./ai");
 const { getSession, updateSession } = require("./sessionStore");
 const { initBooking, processBookingMessage, buildLead } = require("./booking");
 const { isCancellation } = require("./validators");
-const { routeIncomingText, getRouteReply, appendSoftBookingCta } = require("./router");
+const {
+  routeIncomingText,
+  getRouteReply,
+  normalizeRouteReply
+} = require("./router");
+const { getReturningGreeting } = require("./brand");
+const {
+  detectEmotionalDistress,
+  isExplicitBookingRequest,
+  getEmotionalSupportReply,
+  getSoftPriceReply,
+  markEmotionalHold,
+  clearEmotionalHoldIfExpired,
+  shouldHoldSales
+} = require("./emotionalSupport");
 
 const SCENARIO_INTENTS = [
   "greeting",
@@ -32,11 +46,21 @@ function pushHistory(session, role, content) {
 
 function welcomeMessage(session, language) {
   if (session.profile?.name && session.profile.visits > 0) {
-    return language === "kz"
-      ? `Қайта қош келдіңіз, ${session.profile.name} 🌿`
-      : `Рада снова видеть вас, ${session.profile.name} 🌿`;
+    return getReturningGreeting(language, session.profile.name);
   }
   return null;
+}
+
+function toOutbound(routeReply, routeName, language, session) {
+  return normalizeRouteReply(routeReply, routeName, language, {
+    holdSales: shouldHoldSales(session)
+  });
+}
+
+function emotionalReply(incomingText, language, session, options = {}) {
+  const text = getEmotionalSupportReply(incomingText, language, options);
+  markEmotionalHold(session);
+  return { reply: text, messages: [{ type: "text", text }] };
 }
 
 async function handleIncomingMessage({
@@ -52,8 +76,18 @@ async function handleIncomingMessage({
 }) {
   const incomingText = String(buttonText || text || "").trim();
   const session = getSession(userId);
+  clearEmotionalHoldIfExpired(session);
+
   const language = detectLanguage(incomingText, session.language);
   session.language = language;
+
+  const distressed = detectEmotionalDistress(incomingText);
+  const explicitBooking = isExplicitBookingRequest(incomingText);
+
+  if (distressed) {
+    markEmotionalHold(session);
+    logger.info("Emotional distress detected", { userId });
+  }
 
   if (isCancellation(incomingText) && session.booking?.active) {
     session.booking = null;
@@ -61,7 +95,7 @@ async function handleIncomingMessage({
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", reply);
     updateSession(userId, session);
-    return { reply };
+    return { reply, messages: [{ type: "text", text: reply }] };
   }
 
   if (session.booking?.active) {
@@ -72,53 +106,114 @@ async function handleIncomingMessage({
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       updateSession(userId, session);
-      return { reply: result.reply };
+      return { reply: result.reply, messages: [{ type: "text", text: result.reply }] };
     }
 
     if (result.done) {
       const lead = buildLead(session.booking, userId, language);
       await notifyAdmin(lead);
-      session.profile.name = session.booking.data.name;
-      session.profile.phone = session.booking.data.phone;
+      if (session.booking.data.name) session.profile.name = session.booking.data.name;
+      if (session.booking.data.phone) session.profile.phone = session.booking.data.phone;
       session.profile.visits = (session.profile.visits || 0) + 1;
       session.booking = null;
+      session.emotionalHold = false;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       updateSession(userId, session);
-      logger.info("Booking completed", { userId, name: lead.payload.name });
-      return { reply: result.reply };
+      logger.info("Booking completed", { userId, service: lead.payload.service });
+      return { reply: result.reply, messages: [{ type: "text", text: result.reply }] };
     }
 
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", result.reply);
     updateSession(userId, session);
-    return { reply: result.reply };
+    return { reply: result.reply, messages: [{ type: "text", text: result.reply }] };
   }
 
   const routeName = routeIncomingText(incomingText, buttonId);
 
-  if (routeName) {
-    let reply = getRouteReply(routeName, language);
-
-    if (routeName === "booking") {
-      session.booking = initBooking(language);
-    } else {
-      reply = appendSoftBookingCta(reply, routeName, language);
+  if (distressed && !isButton) {
+    if (routeName === "price") {
+      const softPrice = getSoftPriceReply(language);
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", softPrice);
+      updateSession(userId, session);
+      return { reply: softPrice, messages: [{ type: "text", text: softPrice }] };
     }
 
-    pushHistory(session, "user", isButton ? `[кнопка] ${incomingText}` : incomingText);
-    pushHistory(session, "assistant", reply);
+    if (routeName === "booking" && !explicitBooking) {
+      const outbound = emotionalReply(incomingText, language, session);
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", outbound.reply);
+      updateSession(userId, session);
+      return outbound;
+    }
+
+    if (!routeName || routeName === "contraindications") {
+      const outbound = emotionalReply(incomingText, language, session, {
+        explicitBooking: explicitBooking
+      });
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", outbound.reply);
+      updateSession(userId, session);
+      return outbound;
+    }
+  }
+
+  if (routeName) {
+    let routeReply = getRouteReply(routeName, language);
+    const outbound = toOutbound(routeReply, routeName, language, session);
+
+    if (routeName === "booking") {
+      if (distressed && !explicitBooking && !isButton) {
+        const emo = emotionalReply(incomingText, language, session, { explicitBooking: true });
+        pushHistory(session, "user", incomingText);
+        pushHistory(session, "assistant", emo.reply);
+        updateSession(userId, session);
+        return emo;
+      }
+      session.booking = initBooking(language);
+      const startText = getScenarioResponse("booking_start", language);
+      outbound.reply = startText;
+      outbound.messages = [{ type: "text", text: startText }];
+    }
+
+    if (routeName === "price" && shouldHoldSales(session)) {
+      const softPrice = getSoftPriceReply(language);
+      outbound.reply = softPrice;
+      outbound.messages = [{ type: "text", text: softPrice }];
+    }
+
+    pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+    pushHistory(session, "assistant", outbound.reply || incomingText);
     updateSession(userId, session);
     logger.info("Routed by menu", { userId, routeName, isButton });
-    return { reply };
+    return outbound;
   }
 
   if (/^(меню|menu|басты меню)$/i.test(incomingText)) {
-    return { withMenu: true, reply: null };
+    return { withMenu: true, reply: null, messages: [] };
   }
 
   const clientIntent = detectClientIntent(incomingText, language);
   session.lastIntent = clientIntent.intent;
+
+  if (distressed && clientIntent.intent === "booking" && !explicitBooking) {
+    const outbound = emotionalReply(incomingText, language, session, { explicitBooking: true });
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply);
+    updateSession(userId, session);
+    return outbound;
+  }
+
+  if (distressed && !explicitBooking) {
+    const outbound = emotionalReply(incomingText, language, session);
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply);
+    updateSession(userId, session);
+    return outbound;
+  }
+
   logger.info("Client intent (AI path)", {
     userId,
     intent: clientIntent.intent,
@@ -127,20 +222,41 @@ async function handleIncomingMessage({
 
   if (clientIntent.intent === "booking") {
     session.booking = initBooking(language);
-    const reply = getRouteReply("booking", language);
+    const startText = getScenarioResponse("booking_start", language);
     pushHistory(session, "user", incomingText);
-    pushHistory(session, "assistant", reply);
+    pushHistory(session, "assistant", startText);
     updateSession(userId, session);
-    return { reply };
+    return { reply: startText, messages: [{ type: "text", text: startText }] };
+  }
+
+  if (clientIntent.intent === "address") {
+    const outbound = toOutbound(getRouteReply("address", language), "address", language, session);
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply || "address");
+    updateSession(userId, session);
+    return outbound;
+  }
+
+  if (clientIntent.intent === "price" && shouldHoldSales(session)) {
+    const softPrice = getSoftPriceReply(language);
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", softPrice);
+    updateSession(userId, session);
+    return { reply: softPrice, messages: [{ type: "text", text: softPrice }] };
   }
 
   if (SCENARIO_INTENTS.includes(clientIntent.intent)) {
-    let reply = getRouteReply(clientIntent.intent, language) || getScenarioResponse(clientIntent.intent, language);
-    reply = appendSoftBookingCta(reply, clientIntent.intent, language);
+    const outbound = toOutbound(
+      getRouteReply(clientIntent.intent, language) ||
+        getScenarioResponse(clientIntent.intent, language),
+      clientIntent.intent,
+      language,
+      session
+    );
     pushHistory(session, "user", incomingText);
-    pushHistory(session, "assistant", reply);
+    pushHistory(session, "assistant", outbound.reply || "");
     updateSession(userId, session);
-    return { reply };
+    return outbound;
   }
 
   const isFirstContact = !session.history.length;
@@ -150,11 +266,11 @@ async function handleIncomingMessage({
     /^(привет|здравств|сәлем|салем)/i.test(incomingText);
 
   if (isGreeting) {
-    const reply = welcomeMessage(session, language);
+    const reply = welcomeMessage(session, language) || getScenarioResponse("greeting", language);
     pushHistory(session, "user", incomingText);
-    if (reply) pushHistory(session, "assistant", reply);
+    pushHistory(session, "assistant", reply);
     updateSession(userId, session);
-    return { reply, withMenu: true };
+    return { reply, withMenu: true, messages: [{ type: "text", text: reply }] };
   }
 
   pushHistory(session, "user", incomingText);
@@ -165,11 +281,12 @@ async function handleIncomingMessage({
     language,
     history: session.history,
     intent: clientIntent.intent,
-    profile: session.profile
+    profile: session.profile,
+    emotional: distressed || shouldHoldSales(session)
   });
   pushHistory(session, "assistant", aiText);
   updateSession(userId, session);
-  return { reply: aiText };
+  return { reply: aiText, messages: [{ type: "text", text: aiText }] };
 }
 
 module.exports = { handleIncomingMessage };

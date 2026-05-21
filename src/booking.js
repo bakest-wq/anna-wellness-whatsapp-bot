@@ -1,5 +1,6 @@
 const { getScenarioResponse } = require("./responses");
 const { matchService } = require("./serviceMatcher");
+const { servicesListText } = require("./knowledge");
 const {
   normalizePhone,
   isValidPhone,
@@ -7,12 +8,12 @@ const {
   isCancellation
 } = require("./validators");
 
-const STEPS = ["name", "phone", "service", "day", "time", "contraindications"];
+const STEPS = ["service", "day", "time", "phone"];
 
 function initBooking(language) {
   return {
     active: true,
-    step: "name",
+    step: "service",
     startedAt: Date.now(),
     data: {
       name: "",
@@ -31,21 +32,16 @@ function nextQuestion(booking) {
   const lang = booking.language === "kz" ? "kz" : "ru";
   const q = {
     ru: {
-      name: "Подскажите, пожалуйста, как к вам обращаться?",
-      phone: "Благодарю 🌿 Оставьте номер телефона для подтверждения записи.",
-      service: "На какую практику записать вас?",
-      day: "На какой день вам удобно?",
-      time: "Какое время комфортно? Работаем 09:00–22:00, последняя запись — в 20:00.",
-      contraindications:
-        "Есть ли противопоказания или особенности, о которых важно знать?"
+      service: `Какая практика вам ближе по ощущению? 🌿\n\nМожно не спешить.\n\n${servicesListText("ru")}`,
+      day: "На какой день вам было бы спокойно прийти?",
+      time: "Какое время комфортно? Принимаем с 09:00 до 22:00 — без спешки.",
+      phone: "Когда будете готовы — оставьте номер для мягкого подтверждения 🤍\n\nФормат: +7XXXXXXXXXX"
     },
     kz: {
-      name: "Өзіңізді қалай атаймыз?",
-      phone: "Рахмет 🌿 Жазылуды растау үшін телефон нөміріңізді жіберіңізші.",
-      service: "Қай практикаға жазайын?",
-      day: "Қай күн ыңғайлы?",
-      time: "Қай уақыт ыңғайлы? 09:00–22:00, соңғы жазылу — 20:00.",
-      contraindications: "Қарсы көрсетілімдер немесе ескеру керек жағдайлар бар ма?"
+      service: `Қай практика жақын сезіледі? 🌿\n\nАсықпай болады.\n\n${servicesListText("kz")}`,
+      day: "Қай күн жайлы болар еді?",
+      time: "Қай уақыт ыңғайлы? 09:00–22:00.",
+      phone: "Дайын болғанда — растау үшін телефон нөмірін жіберіңізші 🤍\n\n+7XXXXXXXXXX"
     }
   };
   return q[lang][booking.step] || q.ru[booking.step];
@@ -64,17 +60,25 @@ function smartFill(booking, text) {
   if (!t) return;
 
   const phoneMatch = t.match(/(\+?7[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|8\d{10})/);
-  if (phoneMatch && !booking.data.phone) {
+  if (phoneMatch && booking.step === "phone" && !booking.data.phone) {
     booking.data.phone = normalizePhone(phoneMatch[0]);
   }
 
   const service = matchService(t);
-  if (service && !booking.data.service) booking.data.service = service;
+  if (service && !booking.data.service && booking.step === "service") {
+    booking.data.service = service;
+  }
 
   const timeCheck = isValidBookingTime(t);
-  if (timeCheck.ok && !booking.data.time) booking.data.time = timeCheck.parsed;
+  if (timeCheck.ok && !booking.data.time && booking.step === "time") {
+    booking.data.time = timeCheck.parsed;
+  }
 
-  if (/завтра|ертең|послезавтра|сегодня|бүгін|\d{1,2}[./]\d{1,2}/i.test(t) && !booking.data.day) {
+  if (
+    booking.step === "day" &&
+    /завтра|ертең|послезавтра|сегодня|бүгін|\d{1,2}[./]\d{1,2}/i.test(t) &&
+    !booking.data.day
+  ) {
     booking.data.day = extractDay(t);
   }
 
@@ -83,66 +87,31 @@ function smartFill(booking, text) {
   }
 }
 
-function advanceBooking(booking) {
-  while (STEPS.includes(booking.step)) {
-    const field = booking.step;
-    const val = booking.data[field === "contraindications" ? "contraindications" : field];
-    if (!val || String(val).trim() === "") break;
-    const idx = STEPS.indexOf(booking.step);
-    booking.step = STEPS[idx + 1] || "done";
-  }
-  if (booking.step === "done") booking.active = false;
-}
-
 function processBookingMessage(booking, text, language) {
   if (isCancellation(text)) {
     return { cancelled: true, reply: getScenarioResponse("booking_cancelled", language) };
   }
 
   smartFill(booking, text);
-  advanceBooking(booking);
-  const lText = text.toLowerCase().trim();
 
   if (booking.step === "done") {
     booking.active = false;
     return { done: true, reply: getScenarioResponse("booking_complete", language) };
   }
 
-  if (booking.step === "name") {
-    if (!booking.data.name) {
-      if (text.length >= 2 && text.length <= 50 && !/запис|жазыл|хочу|массаж/i.test(lText)) {
-        booking.data.name = text.trim();
-      }
-      advanceBooking(booking);
-      if (booking.step === "name") return { reply: nextQuestion(booking) };
-    }
-    booking.step = booking.data.name ? "phone" : "name";
-    advanceBooking(booking);
-    return { reply: nextQuestion(booking) };
-  }
-
-  if (booking.step === "phone") {
-    const phone = normalizePhone(text);
-    if (!isValidPhone(phone)) {
-      return { reply: getScenarioResponse("invalid_phone", language) };
-    }
-    booking.data.phone = phone;
-    booking.step = "service";
-    advanceBooking(booking);
-    return { reply: nextQuestion(booking) };
-  }
-
   if (booking.step === "service") {
     booking.data.service = matchService(text) || text.trim();
+    if (!booking.data.service) {
+      return { reply: nextQuestion(booking) };
+    }
     booking.step = "day";
-    advanceBooking(booking);
     return { reply: nextQuestion(booking) };
   }
 
   if (booking.step === "day") {
+    if (!text.trim()) return { reply: nextQuestion(booking) };
     booking.data.day = extractDay(text);
     booking.step = "time";
-    advanceBooking(booking);
     return { reply: nextQuestion(booking) };
   }
 
@@ -152,13 +121,16 @@ function processBookingMessage(booking, text, language) {
       return { reply: getScenarioResponse("invalid_time", language) };
     }
     booking.data.time = timeCheck.parsed;
-    booking.step = "contraindications";
+    booking.step = "phone";
     return { reply: nextQuestion(booking) };
   }
 
-  if (booking.step === "contraindications") {
-    booking.data.contraindications = text.trim();
-    booking.data.comment = /нет|жоқ|no|none|жоқ емес/i.test(lText) ? "" : text.trim();
+  if (booking.step === "phone") {
+    const phone = normalizePhone(text);
+    if (!isValidPhone(phone)) {
+      return { reply: getScenarioResponse("invalid_phone", language) };
+    }
+    booking.data.phone = phone;
     booking.step = "done";
     booking.active = false;
     return { done: true, reply: getScenarioResponse("booking_complete", language) };
@@ -170,28 +142,26 @@ function processBookingMessage(booking, text, language) {
 function buildLead(booking, userId, language) {
   const d = booking.data;
   const langLabel = language === "kz" ? "Казахский" : "Русский";
+  const nameLine = d.name ? `👤 Имя: ${d.name}\n` : "";
   return {
-    text: `🌿 Новая заявка с WhatsApp
+    text: `🌿 Заявка · Sakina Wellness
 
-👤 Имя: ${d.name}
-📞 Телефон: ${d.phone || userId}
+${nameLine}📞 Телефон: ${d.phone || userId}
 🌍 Язык: ${langLabel}
-💆 Услуга: ${d.service}
+💆 Практика: ${d.service}
 📅 День: ${d.day}
 🕐 Время: ${d.time}
-⚠️ Противопоказания: ${d.contraindications}
-💬 Комментарий: ${d.comment || "—"}
-📍 Источник: WhatsApp AI-бот`,
+📍 Источник: Sakina Wellness · WhatsApp`,
     payload: {
-      name: d.name,
+      name: d.name || "—",
       phone: d.phone || userId,
       language: langLabel,
       service: d.service,
       day: d.day,
       time: d.time,
-      contraindications: d.contraindications,
+      contraindications: d.contraindications || "—",
       comment: d.comment || "—",
-      source: "WhatsApp AI-бот",
+      source: "Sakina Wellness · WhatsApp",
       userId
     }
   };
@@ -202,6 +172,6 @@ module.exports = {
   processBookingMessage,
   buildLead,
   smartFill,
-  advanceBooking,
-  nextQuestion
+  nextQuestion,
+  STEPS
 };

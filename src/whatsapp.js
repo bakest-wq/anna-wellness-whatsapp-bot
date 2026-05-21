@@ -1,7 +1,11 @@
 const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
+const { BRAND } = require("./brand");
 const { normalizePhone } = require("./validators");
+const { getTypingDelayMs } = require("./ux");
 const {
-  getInteractiveMenuParts,
+  getInteractiveMenuBlock,
   getTextMenuFallback
 } = require("./buttons");
 
@@ -29,14 +33,15 @@ function pickButtonFields(obj) {
     obj.selectedId ||
     obj.buttonId ||
     obj.id ||
+    obj.singleSelectReply ||
     (obj.selectedIndex !== undefined ? String(obj.selectedIndex) : null);
 
   const buttonText =
     obj.selectedButtonText ||
     obj.selectedDisplayText ||
+    obj.title ||
     obj.buttonText ||
     obj.text ||
-    obj.title ||
     "";
 
   if (!buttonId && !buttonText) return null;
@@ -59,8 +64,21 @@ function extractGreenButton(body) {
     interactiveResponseMessage: md.interactiveResponseMessage,
     interactiveButtonsResponse: md.interactiveButtonsResponse,
     interactiveButtonReplyMessage: md.interactiveButtonReplyMessage,
-    interactiveButtonsReplyMessage: md.interactiveButtonsReplyMessage
+    interactiveButtonsReplyMessage: md.interactiveButtonsReplyMessage,
+    listResponseMessage: md.listResponseMessage
   };
+
+  if (type === "listResponseMessage" && md.listResponseMessage) {
+    const lr = md.listResponseMessage;
+    const rowId = lr.singleSelectReply || lr.selectedRowId;
+    const title = lr.title || "";
+    return {
+      buttonId: rowId ? String(rowId) : null,
+      buttonText: String(title).trim(),
+      text: String(title).trim(),
+      typeMessage: type
+    };
+  }
 
   if (type && dataByType[type]) {
     const picked = pickButtonFields(dataByType[type]);
@@ -68,6 +86,7 @@ function extractGreenButton(body) {
   }
 
   const fallbackKeys = [
+    "listResponseMessage",
     "templateButtonReplyMessage",
     "templateButtonsReplyMessage",
     "buttonsResponseMessage",
@@ -120,7 +139,8 @@ function parseIncomingFromCloud(body) {
   const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
   if (!message) return null;
 
-  const interactive = message?.interactive?.button_reply;
+  const listReply = message?.interactive?.list_reply;
+  const interactive = message?.interactive?.button_reply || listReply;
   const text = (interactive?.title || message?.text?.body || "").trim();
   if (!text && !interactive) return null;
 
@@ -131,7 +151,7 @@ function parseIncomingFromCloud(body) {
     buttonId: interactive?.id || null,
     buttonText: interactive?.title || text,
     isButton: Boolean(interactive),
-    typeMessage: interactive ? "button_reply" : message.type
+    typeMessage: interactive ? (listReply ? "list_reply" : "button_reply") : message.type
   };
 }
 
@@ -147,12 +167,25 @@ async function postGreen(config, endpoint, payload, logger) {
   return res.data;
 }
 
+async function sendTypingGreen(config, chatId, ms, logger) {
+  try {
+    await postGreen(
+      config,
+      "sendTyping",
+      { chatId, typingTime: Math.min(Math.max(ms, 1000), 20000) },
+      logger
+    );
+  } catch (err) {
+    logger?.debug?.("sendTyping skipped", { message: err.message });
+  }
+}
+
 async function sendInteractiveButtonsReply(config, block, chatId, logger) {
   const payload = {
     chatId,
-    header: block.header || "Sakina Beauty 🌿",
+    header: block.header || BRAND.header,
     body: block.body,
-    footer: block.footer || "",
+    footer: block.footer || BRAND.subtitle,
     buttons: block.buttons.map((b) => ({
       buttonId: b.buttonId,
       buttonText: b.buttonText
@@ -162,13 +195,56 @@ async function sendInteractiveButtonsReply(config, block, chatId, logger) {
   return postGreen(config, "sendInteractiveButtonsReply", payload, logger);
 }
 
+async function sendListMessageGreen(config, block, chatId, logger) {
+  const payload = {
+    chatId,
+    message: block.body,
+    title: block.header,
+    footer: block.footer,
+    buttonText: block.listButtonText,
+    sections: block.sections
+  };
+
+  return postGreen(config, "sendListMessage", payload, logger);
+}
+
 async function sendWhatsAppGreen({ config, to, text, logger }) {
   const chatId = toChatId(to);
   await postGreen(config, "sendMessage", { chatId, message: text }, logger);
 }
 
+async function sendFileByUrlGreen({ config, to, url, caption, logger }) {
+  const chatId = toChatId(to);
+  await postGreen(
+    config,
+    "sendFileByUrl",
+    { chatId, urlFile: url, fileName: "cabinet.jpg", caption: caption || "" },
+    logger
+  );
+}
+
+async function sendLocalImageGreen({ config, to, filePath, caption, logger }) {
+  const chatId = toChatId(to);
+  const abs = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  if (!fs.existsSync(abs)) return false;
+
+  const fileBase64 = fs.readFileSync(abs).toString("base64");
+  await postGreen(
+    config,
+    "sendFileByUpload",
+    {
+      chatId,
+      file: fileBase64,
+      fileName: path.basename(abs),
+      caption: caption || ""
+    },
+    logger
+  );
+  return true;
+}
+
 async function sendTextMenuFallback({ config, to, language, logger, reason }) {
-  logger.warn("SendInteractiveButtonsReply unavailable, using text menu", {
+  logger.warn("Interactive menu unavailable, using text menu", {
     to,
     language,
     reason: reason || "not_supported"
@@ -179,22 +255,60 @@ async function sendTextMenuFallback({ config, to, language, logger, reason }) {
 
 async function sendMainMenuButtons({ config, to, language, logger }) {
   const chatId = toChatId(to);
-  const parts = getInteractiveMenuParts(language);
+  const block = getInteractiveMenuBlock(language);
+  const buttons = block.buttons.map((b) => ({
+    buttonId: b.buttonId,
+    buttonText: b.buttonText
+  }));
 
   try {
-    for (let i = 0; i < parts.length; i++) {
-      await sendInteractiveButtonsReply(config, parts[i], chatId, logger);
-      if (i < parts.length - 1) await new Promise((r) => setTimeout(r, 500));
+    await sendListMessageGreen(config, block, chatId, logger);
+    logger.info("Menu sent (sendListMessage, 4 options)", { chatId, language });
+    return { mode: "list" };
+  } catch (listErr) {
+    logger.debug("sendListMessage failed, trying buttons", {
+      message: listErr?.response?.data?.message || listErr.message
+    });
+  }
+
+  try {
+    await sendInteractiveButtonsReply(config, { ...block, buttons }, chatId, logger);
+    logger.info("Menu sent (sendInteractiveButtonsReply)", { chatId, language, count: buttons.length });
+    return { mode: "buttons" };
+  } catch (btnErr) {
+    if (buttons.length > 3) {
+      try {
+        await sendInteractiveButtonsReply(
+          config,
+          { ...block, buttons: buttons.slice(0, 3) },
+          chatId,
+          logger
+        );
+        await new Promise((r) => setTimeout(r, 500));
+        await sendInteractiveButtonsReply(
+          config,
+          {
+            header: BRAND.header,
+            body: language === "kz" ? "Тағы бір бөлім 🌿" : "Ещё один раздел 🌿",
+            footer: block.footer,
+            buttons: [buttons[3]]
+          },
+          chatId,
+          logger
+        );
+        logger.info("Menu sent (buttons split 3+1)", { chatId, language });
+        return { mode: "buttons_split" };
+      } catch (splitErr) {
+        logger.debug("buttons split failed", { message: splitErr.message });
+      }
     }
-    logger.info("Interactive menu sent (SendInteractiveButtonsReply)", { chatId, language });
-    return { mode: "interactive" };
-  } catch (err) {
+
     await sendTextMenuFallback({
       config,
       to,
       language,
       logger,
-      reason: err?.response?.data?.message || err.message
+      reason: btnErr?.response?.data?.message || btnErr.message
     });
     return { mode: "text_fallback" };
   }
@@ -224,11 +338,54 @@ async function sendWhatsApp({ config, to, text, logger }) {
   return sendWhatsAppCloud({ config, to, text, logger });
 }
 
+async function sendOutboundMessages({ config, to, messages, logger }) {
+  const chatId = toChatId(to);
+  const typingMs = getTypingDelayMs();
+
+  if (config.provider === "green") {
+    await sendTypingGreen(config, chatId, typingMs, logger);
+    await new Promise((r) => setTimeout(r, typingMs));
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.type === "image") {
+      if (config.provider === "green") {
+        if (msg.url) {
+          await sendFileByUrlGreen({
+            config,
+            to,
+            url: msg.url,
+            caption: msg.caption,
+            logger
+          });
+        } else if (msg.path) {
+          await sendLocalImageGreen({
+            config,
+            to,
+            filePath: msg.path,
+            caption: msg.caption,
+            logger
+          });
+        }
+      }
+    } else if (msg.text) {
+      await sendWhatsApp({ config, to, text: msg.text, logger });
+    }
+
+    if (i < messages.length - 1) {
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+}
+
 module.exports = {
   parseIncomingFromGreen,
   parseIncomingFromCloud,
   parseIncomingMessage,
   sendWhatsApp,
   sendMainMenuButtons,
-  sendTextMenuFallback
+  sendTextMenuFallback,
+  sendOutboundMessages,
+  sendTypingGreen
 };

@@ -1,7 +1,7 @@
 {
-  "name": "anna-wellness-whatsapp-bot",
-  "version": "2.0.0",
-  "description": "WhatsApp AI bot backend for wellness master Anna Abdulrashidovna",
+  "name": "sakina-wellness-whatsapp-bot",
+  "version": "2.1.0",
+  "description": "WhatsApp AI bot for Sakina Wellness — premium wellness studio in Aktobe",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -11,7 +11,10 @@
     "whatsapp",
     "openai",
     "telegram",
-    "wellness"
+    "wellness",
+    "sakina-wellness",
+    "spa",
+    "aktobe"
   ],
   "author": "",
   "license": "MIT",
