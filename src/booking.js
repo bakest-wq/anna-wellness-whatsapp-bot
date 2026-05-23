@@ -24,8 +24,7 @@ const {
   getResumeStepLabel,
   getSessionSnapshotForLead
 } = require("./sessionMemory");
-const { isGlobalIntent } = require("./messageRouter");
-const { tryGreetingResetBeforeBooking } = require("./greetingReset");
+const { handleGlobalIntentFirst } = require("./messageRouter");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
@@ -172,15 +171,18 @@ function resolveServiceFromInput(session, text, options = {}) {
 function processBookingSession(session, text, language, options = {}) {
   const chatId = options.chatId || session.chatId;
 
-  if (isGlobalIntent(text, options)) {
+  const globalHit = handleGlobalIntentFirst({
+    chatId,
+    session,
+    text,
+    language,
+    isButton: options.isButton,
+    buttonId: options.buttonId,
+    menuContext: options.menuContext
+  });
+  if (globalHit) {
     console.log("GREETING RESET BEFORE BOOKING (processBookingSession)");
-    const outbound = tryGreetingResetBeforeBooking({
-      chatId,
-      session,
-      text,
-      language
-    });
-    return { globalReset: true, reply: outbound?.reply, ...outbound };
+    return { globalReset: true, reply: globalHit.outbound?.reply, ...globalHit.outbound };
   }
 
   if (language === "kz" || language === "ru") {

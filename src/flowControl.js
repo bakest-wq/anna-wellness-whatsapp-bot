@@ -143,6 +143,11 @@ function isValidBookingName(text) {
 }
 
 function isValidBookingStepInput(text, sessionOrBooking, language, options = {}) {
+  const { isGlobalIntent, normalizeIncomingText } = require("./messageRouter");
+  if (isGlobalIntent(normalizeIncomingText(text), options)) {
+    return false;
+  }
+
   const step =
     sessionOrBooking?.currentStep ||
     sessionOrBooking?.step ||

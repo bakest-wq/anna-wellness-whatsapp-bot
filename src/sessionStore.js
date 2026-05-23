@@ -127,6 +127,14 @@ function normalizeLegacySession(raw, chatId) {
     session.waitingForDate = false;
     session.waitingForPhone = false;
     session.pendingStep = null;
+    if (!session.currentFlow) {
+      session.selectedPractice = null;
+      session.selectedPracticeTitle = null;
+      session.bookingDate = null;
+      session.bookingTime = null;
+      session.contraindications = null;
+      session.bookingComment = null;
+    }
   }
 
   return session;

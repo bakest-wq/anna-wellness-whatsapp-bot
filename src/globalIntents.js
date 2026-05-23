@@ -14,7 +14,7 @@ const GREETING_PATTERNS = [
 ];
 
 const NAV_RESET_PATTERNS =
-  /^(главное\s*меню|меню|menu|басты\s*меню|назад|back|сначала|начать\s+заново|с\s+начала|заново|reset|restart|стоп|stop)$/i;
+  /^(главное\s*меню|меню|menu|басты\s*меню|назад|артқа|back|сначала|начать\s+заново|с\s+начала|заново|reset|restart|стоп|stop|отмена|отменить|отмен)$/i;
 
 const CONCIERGE_RESET_PATTERN =
   /(помочь\s+подобрать\s+практик\w*|подобрать\s+практик\w*|практиканы\s+таңдауға\s+көмек)/i;
@@ -62,7 +62,13 @@ function isGreetingText(text) {
 }
 
 function isNavResetText(text) {
-  return NAV_RESET_PATTERNS.test(normalizeText(text));
+  const t = String(text || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/\s+/g, " ");
+  return NAV_RESET_PATTERNS.test(t);
 }
 
 function isConciergeEntryReset(text) {
@@ -84,19 +90,24 @@ function isMainMenuButtonIntent(buttonId, _text, menuContext) {
  * @param {{ isButton?: boolean, buttonId?: string, menuContext?: string }} [options]
  */
 function isGlobalResetIntent(text, options = {}) {
+  return isGlobalIntentLocal(text, options);
+}
+
+function isGlobalIntentLocal(text, options = {}) {
   const { isButton = false, buttonId, menuContext = "main" } = options;
-  const raw = normalizeText(text);
+  const raw = normalizeText(text)
+    .toLowerCase()
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .trim();
 
   if (isButton && isMainMenuButtonIntent(buttonId, raw, menuContext)) {
     return true;
   }
-
   if (!raw) return false;
-
   if (isGreetingText(raw)) return true;
   if (isNavResetText(raw)) return true;
   if (isConciergeEntryReset(raw)) return true;
-
+  if (/^(отмена|отменить|отмен)$/i.test(raw)) return true;
   return false;
 }
 

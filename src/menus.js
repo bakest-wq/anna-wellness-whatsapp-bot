@@ -13,7 +13,7 @@ const {
   EMOTIONS,
   OUTCOMES,
   CARD_ACTIONS
-} = require("./concierge");
+} = require("./concierge/conciergeMenus");
 
 const ITEMS = {
   concierge: {
@@ -29,7 +29,7 @@ const ITEMS = {
   price: {
     id: "btn_price",
     route: "price",
-    ru: "💰 Узнать цены",
+    ru: "💰 Цены",
     kz: "💰 Бағалар",
     labelRu: "Цены",
     labelKz: "Бағалар",
@@ -69,8 +69,8 @@ const ITEMS = {
   practices: {
     id: "btn_practices",
     route: "practices",
-    ru: "🌿 Подробнее о практиках",
-    kz: "🌿 Практикалар",
+    ru: "🌸 Подробнее о практиках",
+    kz: "🌸 Практикалар",
     labelRu: "Подробнее о практиках",
     labelKz: "Практикалар",
     descRu: "Что мы делаем",
@@ -110,8 +110,8 @@ const ITEMS = {
 
 const MENU_CONTEXTS = {
   main: {
-    items: ["concierge", "booking", "price", "address"],
-    maxChoice: 4
+    items: ["concierge", "booking", "price", "address", "contra", "practices"],
+    maxChoice: 6
   },
   concierge_emotion: {
     type: "concierge_list",
@@ -161,8 +161,8 @@ const MENU_CONTEXTS = {
     maxChoice: 4
   },
   default: {
-    items: ["concierge", "booking", "price", "address"],
-    maxChoice: 4
+    items: ["concierge", "booking", "price", "address", "contra", "practices"],
+    maxChoice: 6
   }
 };
 
@@ -170,7 +170,9 @@ const MAIN_NUMERIC = {
   1: "concierge",
   2: "booking",
   3: "price",
-  4: "address"
+  4: "address",
+  5: "contraindications",
+  6: "practices"
 };
 
 const ID_TO_ROUTE = Object.fromEntries(Object.values(ITEMS).map((i) => [i.id, i.route]));
@@ -321,25 +323,15 @@ function getMenuTextBlock(language, context = "main") {
   }
 
   if (context === "main" || context === "default") {
-    if (lang === "ru") {
-      return `Выберите, пожалуйста, что вам сейчас ближе:
-
-1️⃣ Помочь подобрать практику
-2️⃣ Записаться
-3️⃣ Цены
-4️⃣ Адрес
-
-Можно просто отправить цифру 🌿`;
-    }
-
-    return `Қазір не жақын?
-
-1️⃣ Практиканы таңдауға көмек
-2️⃣ Жазылу
-3️⃣ Бағалар
-4️⃣ Мекенжай
-
-Санды жіберіңіз 🌿`;
+    const items = getContextItems(context);
+    const intro =
+      lang === "ru"
+        ? "Выберите, пожалуйста, что вам сейчас ближе:"
+        : "Қазір не жақын?";
+    const lines = items.map((item, i) => `${i + 1}️⃣ ${item[lang]}`).join("\n");
+    const footer =
+      lang === "ru" ? "Можно просто отправить цифру 🌿" : "Санды жіберіңіз 🌿";
+    return `${intro}\n\n${lines}\n\n${footer}`;
   }
 
   const items = getContextItems(context);

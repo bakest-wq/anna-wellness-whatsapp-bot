@@ -17,11 +17,10 @@ const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
 const MENU_BUTTONS_AFTER = process.env.MENU_BUTTONS_AFTER !== "false";
 
 async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
-  const toSend = enrichOutboundMessages(
-    outbound.messages,
-    lang,
-    outbound.menuContext || "main"
-  );
+  const toSend =
+    outbound.skipMenu === true
+      ? outbound.messages
+      : enrichOutboundMessages(outbound.messages, lang, "main");
 
   if (toSend.length) {
     await sendOutboundMessages({
@@ -141,7 +140,6 @@ async function processIncomingMessage({
       model,
       logger,
       notifyAdmin,
-      skipGlobalGate: true
     });
   }
 

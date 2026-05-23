@@ -1,15 +1,14 @@
 /**
- * Единый маршрутизатор входящих сообщений.
- * Порядок: normalize → global intent → reset/menu → (далее language, booking…)
+ * Единый маршрутизатор: global intent → reset → главное меню (ДО booking FSM).
  */
 
-const { isValidBookingStepInput } = require("./flowControl");
 const { isMainMenuButtonIntent, getGlobalResetRoute } = require("./globalIntents");
-const { resetConversationState } = require("./flowState");
 const {
   isBookingFlowActive,
-  isConciergeFlowActive
+  isConciergeFlowActive,
+  hardResetFlow
 } = require("./sessionMemory");
+const { saveSession } = require("./sessionStore");
 
 const GLOBAL_EXACT = new Set([
   "здравствуйте",
@@ -34,10 +33,14 @@ const GLOBAL_EXACT = new Set([
   "menu",
   "басты меню",
   "назад",
+  "артқа",
   "back",
   "сначала",
   "начать заново",
   "заново",
+  "отмена",
+  "отменить",
+  "отмен",
   "help",
   "помощь",
   "стоп",
@@ -49,15 +52,17 @@ const GLOBAL_EXACT = new Set([
 
 function normalizeIncomingText(text) {
   return String(text || "")
+    .normalize("NFKC")
     .trim()
     .toLowerCase()
-    .replace(/[.!?,🌿🤍✨]/gu, "")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[.!?,🌿🤍✨⬅️📅📍⚠️💰🌸]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /**
- * Глобальный intent — всегда сбрасывает активный FSM.
+ * Абсолютный приоритет: приветствие, навигация, отмена, concierge-entry.
  */
 function isGlobalIntent(text, options = {}) {
   const { isButton = false, buttonId, menuContext = "main" } = options;
@@ -70,12 +75,12 @@ function isGlobalIntent(text, options = {}) {
   if (!t) return false;
   if (GLOBAL_EXACT.has(t)) return true;
 
-  if (t.length <= 48 && /^(здравств|привет|салам|салем|сәлем|hello|hi|help|menu|меню|ассалам)/i.test(t)) {
+  if (t.length <= 56 && /^(здравств|привет|салам|салем|сәлем|hello|hi|help|menu|меню|ассалам|отмен)/i.test(t)) {
     return true;
   }
 
   if (/ассаламу?\s*алейкум|assalamu?\s*aleikum/i.test(t)) return true;
-  if (/(главное\s*меню|назад|сначала|подобрать\s+практик|помочь\s+подобрать)/i.test(t)) {
+  if (/(главное\s*меню|(^|\s)назад(\s|$)|(^|\s)артқа(\s|$)|сначала|подобрать\s+практик|помочь\s+подобрать|отмен)/i.test(t)) {
     return true;
   }
 
@@ -100,43 +105,39 @@ function logSessionBeforeReset(text, session) {
 }
 
 function applyGlobalReset(session, chatId) {
-  resetConversationState(session, chatId);
-  session.currentFlow = null;
-  session.currentStep = null;
+  hardResetFlow(session);
   session.booking = null;
   session.concierge = null;
   session.waitingForTime = false;
   session.waitingForDate = false;
   session.waitingForPhone = false;
   session.pendingStep = null;
+  session.menuContext = "main";
+  if (chatId) {
+    saveSession(chatId, session, ["globalIntentReset"]);
+  }
+}
+
+function buildMainMenuOutbound(session, language) {
+  const { buildMainMenuOutbound: build } = require("./greetingReset");
+  return build(session, language);
 }
 
 /**
- * Шаг 1–3: normalize + global intent + reset + main menu.
- * @returns {{ handled: boolean, outbound?: object, normalized: string, menuRoute?: string|null }}
+ * Жёсткий сброс + главное меню. null если не global intent.
  */
-function runGlobalIntentGate({ chatId, session, text, language, isButton, buttonId, menuContext }) {
+function handleGlobalIntentFirst({
+  chatId,
+  session,
+  text,
+  language,
+  isButton = false,
+  buttonId,
+  menuContext = "main"
+}) {
   const normalized = normalizeIncomingText(text);
-
-  const inActiveFsm =
-    isBookingFlowActive(session) ||
-    isConciergeFlowActive(session) ||
-    Boolean(session.waitingForTime || session.waitingForDate);
-
-  const isGlobal = isGlobalIntent(normalized, { isButton, buttonId, menuContext });
-
-  let unrelatedDuringBooking = false;
-  if (inActiveFsm && isBookingFlowActive(session) && !isButton && !isGlobal) {
-    const valid = isValidBookingStepInput(normalized, session, language, {
-      isButton,
-      buttonId,
-      menuContext
-    });
-    unrelatedDuringBooking = !valid;
-  }
-
-  if (!isGlobal && !unrelatedDuringBooking) {
-    return { handled: false, normalized };
+  if (!isGlobalIntent(normalized, { isButton, buttonId, menuContext })) {
+    return null;
   }
 
   logSessionBeforeReset(normalized, session);
@@ -148,7 +149,6 @@ function runGlobalIntentGate({ chatId, session, text, language, isButton, button
     ? getGlobalResetRoute(buttonId, normalized, menuContext)
     : null;
 
-  const { buildMainMenuOutbound } = require("./greetingReset");
   const outbound = buildMainMenuOutbound(session, language);
 
   return {
@@ -156,13 +156,66 @@ function runGlobalIntentGate({ chatId, session, text, language, isButton, button
     normalized,
     outbound,
     menuRoute: menuRoute || null,
-    reason: isGlobal ? "global_intent" : "unrelated_booking_message"
+    reason: "global_intent"
   };
+}
+
+/**
+ * Первый блок после chatId + text: global intent, затем «чужой» текст в booking.
+ */
+function runGlobalIntentGate({
+  chatId,
+  session,
+  text,
+  language,
+  isButton,
+  buttonId,
+  menuContext
+}) {
+  const normalized = normalizeIncomingText(text);
+
+  const globalResult = handleGlobalIntentFirst({
+    chatId,
+    session,
+    text,
+    language,
+    isButton,
+    buttonId,
+    menuContext
+  });
+  if (globalResult) {
+    return globalResult;
+  }
+
+  if (isBookingFlowActive(session) && !isButton) {
+    const { isValidBookingStepInput } = require("./flowControl");
+    const valid = isValidBookingStepInput(text, session, language, {
+      isButton,
+      buttonId,
+      menuContext
+    });
+    if (!valid) {
+      logSessionBeforeReset(normalized, session);
+      console.log("UNRELATED MESSAGE DURING BOOKING — RESET");
+      applyGlobalReset(session, chatId);
+      const outbound = buildMainMenuOutbound(session, language);
+      return {
+        handled: true,
+        normalized,
+        outbound,
+        menuRoute: null,
+        reason: "unrelated_booking_message"
+      };
+    }
+  }
+
+  return { handled: false, normalized };
 }
 
 module.exports = {
   normalizeIncomingText,
   isGlobalIntent,
+  handleGlobalIntentFirst,
   runGlobalIntentGate,
   applyGlobalReset,
   logSessionBeforeReset

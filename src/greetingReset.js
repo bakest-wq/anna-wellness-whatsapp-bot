@@ -4,7 +4,7 @@
 
 const { getScenarioResponse } = require("./responses");
 const { getReturningGreeting } = require("./brand");
-const { resetConversationState } = require("./flowState");
+const { hardResetFlow } = require("./sessionMemory");
 const { saveSession } = require("./sessionStore");
 
 const GREETING_EXACT = new Set([
@@ -59,7 +59,9 @@ function buildMainMenuOutbound(session, language) {
     (session.profile?.name && session.profile.visits > 0
       ? getReturningGreeting(lang, session.profile.name)
       : null) || getScenarioResponse("greeting", lang);
-  const reply = prefix + greeting;
+  const { getMenuTextBlock } = require("./menus");
+  const menu = getMenuTextBlock(lang, "main");
+  const reply = `${prefix}${greeting}\n\n${menu}`;
   return {
     reply,
     messages: [{ type: "text", text: reply }],
@@ -80,16 +82,10 @@ function tryGreetingResetBeforeBooking({ chatId, session, text, language }) {
   console.log("waitingForTime:", session.waitingForTime);
   console.log("INCOMING:", text);
 
-  resetConversationState(session, chatId);
-
-  session.currentFlow = null;
-  session.currentStep = null;
+  hardResetFlow(session);
   session.booking = null;
   session.concierge = null;
-  session.waitingForTime = false;
-  session.waitingForDate = false;
-  session.waitingForPhone = false;
-  session.pendingStep = null;
+  session.menuContext = "main";
 
   saveSession(chatId, session, ["greetingReset"]);
 

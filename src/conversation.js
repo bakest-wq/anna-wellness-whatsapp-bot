@@ -46,7 +46,11 @@ const {
   isGlobalResetIntent,
   getGlobalResetRoute
 } = require("./globalIntents");
-const { runGlobalIntentGate, isGlobalIntent } = require("./messageRouter");
+const {
+  runGlobalIntentGate,
+  handleGlobalIntentFirst,
+  isGlobalIntent
+} = require("./messageRouter");
 const { getReturningGreeting } = require("./brand");
 const {
   detectEmotionalDistress,
@@ -278,8 +282,7 @@ async function handleIncomingMessage({
   openai,
   model,
   logger,
-  notifyAdmin,
-  skipGlobalGate = false
+  notifyAdmin
 }) {
   const incomingText = String(buttonText || text || "").trim();
   const session = getSession(userId);
@@ -287,30 +290,28 @@ async function handleIncomingMessage({
   let pendingRoute = null;
   let language = normalizeLanguage(session.language);
 
-  // ━━━ 1–3: normalize + global intent + reset (ДО language / booking / waitingFor*) ━━━
-  if (!skipGlobalGate) {
-    const gate = runGlobalIntentGate({
-      chatId: userId,
-      session,
-      text: incomingText,
-      language,
-      isButton,
-      buttonId,
-      menuContext
-    });
+  // ━━━ ABSOLUTE FIRST: global intent → reset → main menu ━━━
+  const gate = runGlobalIntentGate({
+    chatId: userId,
+    session,
+    text: incomingText,
+    language,
+    isButton,
+    buttonId,
+    menuContext
+  });
 
-    if (gate.handled) {
-      language = normalizeLanguage(
-        resolveClientLanguage(incomingText, session.language, { isButton })
-      );
-      session.language = language;
-      pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
-      pushHistory(session, "assistant", gate.outbound.reply);
-      if (gate.menuRoute) {
-        pendingRoute = gate.menuRoute;
-      } else {
-        return finish(session, userId, gate.outbound);
-      }
+  if (gate.handled) {
+    language = normalizeLanguage(
+      resolveClientLanguage(incomingText, session.language, { isButton })
+    );
+    session.language = language;
+    pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+    pushHistory(session, "assistant", gate.outbound.reply);
+    if (gate.menuRoute) {
+      pendingRoute = gate.menuRoute;
+    } else {
+      return finish(session, userId, gate.outbound);
     }
   }
 
@@ -435,6 +436,21 @@ async function handleIncomingMessage({
   }
 
   if (!pendingRoute && isBookingFlowActive(session)) {
+    const globalHit = handleGlobalIntentFirst({
+      chatId: userId,
+      session,
+      text: incomingText,
+      language,
+      isButton,
+      buttonId,
+      menuContext
+    });
+    if (globalHit) {
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", globalHit.outbound.reply);
+      return finish(session, userId, globalHit.outbound);
+    }
+
     const result = processBookingSession(session, incomingText, language, {
       chatId: userId,
       buttonId,
@@ -526,13 +542,28 @@ async function handleIncomingMessage({
 
   if (routeName) {
     if (routeName === "back") {
+      const backReset = handleGlobalIntentFirst({
+        chatId: userId,
+        session,
+        text: incomingText || "назад",
+        language,
+        isButton,
+        buttonId,
+        menuContext
+      });
+      if (backReset) {
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", backReset.outbound.reply);
+        return finish(session, userId, backReset.outbound);
+      }
       const reply = getScenarioResponse("back", language);
       pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
       pushHistory(session, "assistant", reply);
       return finish(session, userId, {
         reply,
         messages: [{ type: "text", text: reply }],
-        menuContext: "main"
+        menuContext: "main",
+        skipMenu: false
       });
     }
 
