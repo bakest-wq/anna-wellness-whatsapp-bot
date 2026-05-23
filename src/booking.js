@@ -24,7 +24,7 @@ const {
   getResumeStepLabel,
   getSessionSnapshotForLead
 } = require("./sessionMemory");
-const { isGlobalResetIntent } = require("./globalIntents");
+const { isGreetingReset, tryGreetingResetBeforeBooking } = require("./greetingReset");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
@@ -169,8 +169,17 @@ function resolveServiceFromInput(session, text, options = {}) {
  * Запись через session state — спрашиваем только недостающие поля.
  */
 function processBookingSession(session, text, language, options = {}) {
-  if (isGlobalResetIntent(text, options)) {
-    return { globalReset: true };
+  const chatId = options.chatId || session.chatId;
+
+  if (isGreetingReset(text)) {
+    console.log("GREETING RESET BEFORE BOOKING (processBookingSession)");
+    const outbound = tryGreetingResetBeforeBooking({
+      chatId,
+      session,
+      text,
+      language
+    });
+    return { globalReset: true, reply: outbound?.reply, ...outbound };
   }
 
   if (language === "kz" || language === "ru") {
@@ -179,7 +188,7 @@ function processBookingSession(session, text, language, options = {}) {
   const lang = session.language === "kz" ? "kz" : "ru";
 
   if (session.currentFlow !== "booking") {
-    session.currentFlow = "booking";
+    return { notInBookingFlow: true };
   }
 
   prefillClientFromProfile(session);
@@ -240,6 +249,16 @@ function processBookingSession(session, text, language, options = {}) {
   }
 
   if (step === "time") {
+    if (isGreetingReset(text)) {
+      console.log("GREETING RESET BEFORE BOOKING (time step)");
+      const outbound = tryGreetingResetBeforeBooking({
+        chatId,
+        session,
+        text,
+        language
+      });
+      return { globalReset: true, reply: outbound?.reply, ...outbound };
+    }
     const timeCheck = isValidBookingTime(text);
     if (!timeCheck.ok) {
       return { reply: getScenarioResponse("invalid_time", lang), skipMenu: true };

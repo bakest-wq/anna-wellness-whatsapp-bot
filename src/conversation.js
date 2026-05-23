@@ -46,6 +46,10 @@ const {
   isGlobalResetIntent,
   getGlobalResetRoute
 } = require("./globalIntents");
+const {
+  isGreetingReset,
+  tryGreetingResetBeforeBooking
+} = require("./greetingReset");
 const { getReturningGreeting } = require("./brand");
 const {
   detectEmotionalDistress,
@@ -290,6 +294,21 @@ async function handleIncomingMessage({
 
   let pendingRoute = null;
 
+  // ━━━ PRIORITY 0: приветствие — ДО waitingForTime / booking / FSM ━━━
+  if (!isButton && isGreetingReset(incomingText)) {
+    const greetingOutbound = tryGreetingResetBeforeBooking({
+      chatId: userId,
+      session,
+      text: incomingText,
+      language
+    });
+    if (greetingOutbound) {
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", greetingOutbound.reply);
+      return finish(session, userId, greetingOutbound);
+    }
+  }
+
   // ━━━ PRIORITY 1: глобальные intent'ы (ДО booking / concierge / waitingFor*) ━━━
   if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
     console.log("GLOBAL RESET TRIGGERED");
@@ -444,6 +463,7 @@ async function handleIncomingMessage({
     }
 
     const result = processBookingSession(session, incomingText, language, {
+      chatId: userId,
       buttonId,
       buttonText,
       isButton,
@@ -451,8 +471,17 @@ async function handleIncomingMessage({
     });
 
     if (result.globalReset) {
-      resetConversationState(session, userId);
-      session.booking = null;
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", result.reply || "");
+      return finish(session, userId, {
+        reply: result.reply,
+        messages: result.messages || [{ type: "text", text: result.reply }],
+        menuContext: "main",
+        skipMenu: false
+      });
+    }
+
+    if (result.notInBookingFlow) {
       const outbound = buildMainMenuWelcome(session, language, {
         reason: "greeting_or_menu"
       });

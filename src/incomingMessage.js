@@ -1,8 +1,9 @@
 const { logger } = require("./logger");
 const { isDuplicate } = require("./messageDedup");
-const { getSession, updateSession } = require("./sessionStore");
+const { getSession, updateSession, saveSession } = require("./sessionStore");
 const { normalizeLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
+const { tryGreetingResetBeforeBooking } = require("./greetingReset");
 const { enrichOutboundMessages, getMenuTextBlock } = require("./menus");
 const {
   parseIncomingMessage,
@@ -48,8 +49,48 @@ async function processIncomingMessage({
   }
 
   const sessionBefore = getSession(payload.userId);
+  const incomingText = String(payload.buttonText || payload.text || "").trim();
+  const lang = normalizeLanguage(sessionBefore.language);
 
-  console.log("INCOMING TEXT:", payload.text);
+  console.log("INCOMING TEXT:", incomingText);
+
+  if (!payload.isButton && incomingText) {
+    const greetingOutbound = tryGreetingResetBeforeBooking({
+      chatId: payload.userId,
+      session: sessionBefore,
+      text: incomingText,
+      language: lang
+    });
+    if (greetingOutbound) {
+      const toSend = enrichOutboundMessages(
+        greetingOutbound.messages,
+        lang,
+        greetingOutbound.menuContext
+      );
+      if (toSend.length) {
+        await sendOutboundMessages({
+          config: waConfig,
+          to: payload.userId,
+          messages: toSend,
+          logger
+        });
+      }
+      if (MENU_BUTTONS_AFTER && waConfig.provider === "green") {
+        await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
+        await tryInteractiveButtonsOnly({
+          config: waConfig,
+          to: payload.userId,
+          language: lang,
+          menuContext: "main",
+          logger
+        });
+      }
+      sessionBefore.menuContext = "main";
+      saveSession(payload.userId, sessionBefore, ["greetingResetEarly"]);
+      logger.info("Greeting reset (incomingMessage gate)", { userId: payload.userId });
+      return;
+    }
+  }
 
   if (payload.isButton) {
     console.log("BUTTON CLICK:", payload.buttonText, "| id:", payload.buttonId);

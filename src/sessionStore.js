@@ -87,27 +87,31 @@ function normalizeLegacySession(raw, chatId) {
 
   const session = { ...base, ...raw, chatId };
 
-  if (raw.booking?.active) {
-    session.currentFlow = "booking";
-    const d = raw.booking.data || {};
-    session.currentStep = raw.booking.step || session.currentStep;
-    session.selectedPractice = d.serviceId || session.selectedPractice;
-    session.selectedPracticeTitle = d.service || session.selectedPracticeTitle;
-    session.bookingDate = d.day || session.bookingDate;
-    session.bookingTime = d.time || session.bookingTime;
-    session.clientName = d.name || session.clientName;
-    session.clientPhone = d.phone || session.clientPhone;
-    session.contraindications = d.contraindications || session.contraindications;
-    session.bookingComment = d.comment || session.bookingComment;
+  // Только явный currentFlow — НЕ восстанавливать booking из orphan booking.active
+  if (raw.currentFlow === "booking") {
+    const d = raw.booking?.data || {};
+    session.currentStep = raw.currentStep || raw.booking?.step || session.currentStep;
+    session.selectedPractice =
+      session.selectedPractice || d.serviceId || null;
+    session.selectedPracticeTitle =
+      session.selectedPracticeTitle || d.service || null;
+    session.bookingDate = session.bookingDate || d.day || null;
+    session.bookingTime = session.bookingTime || d.time || null;
+    session.clientName = session.clientName || d.name || null;
+    session.clientPhone = session.clientPhone || d.phone || null;
+    session.contraindications =
+      session.contraindications || d.contraindications || null;
+    session.bookingComment = session.bookingComment || d.comment || null;
     session.flowStartedAt =
       session.flowStartedAt ||
-      (raw.booking.startedAt
+      (raw.booking?.startedAt
         ? new Date(raw.booking.startedAt).toISOString()
         : session.updatedAt);
+  } else if (raw.booking?.active) {
+    delete session.booking;
   }
 
-  if (raw.concierge?.active) {
-    session.currentFlow = "concierge";
+  if (raw.currentFlow === "concierge") {
     session.currentStep = raw.concierge.step || "emotion";
     session.emotionalState = raw.concierge.emotion || session.emotionalState;
     session.desiredOutcome = raw.concierge.outcome || session.desiredOutcome;
