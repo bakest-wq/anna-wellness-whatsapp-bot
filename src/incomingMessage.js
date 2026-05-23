@@ -50,7 +50,7 @@ async function processIncomingMessage({
 
   const sessionBefore = getSession(payload.userId);
   const incomingText = String(payload.buttonText || payload.text || "").trim();
-  const lang = normalizeLanguage(sessionBefore.language);
+  let lang = normalizeLanguage(sessionBefore.language);
 
   console.log("INCOMING TEXT:", incomingText);
 
@@ -124,7 +124,7 @@ async function processIncomingMessage({
   const outbound = result?.messages || (reply ? [{ type: "text", text: reply }] : []);
 
   const sessionAfter = getSession(payload.userId);
-  const lang = normalizeLanguage(sessionAfter.language);
+  lang = normalizeLanguage(sessionAfter.language);
   const menuContext = result?.menuContext || "main";
 
   const toSend = result?.skipMenu
