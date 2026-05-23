@@ -8,8 +8,19 @@ const {
   processBookingMessage,
   buildLead,
   getBookingStartOutbound,
-  getBookingAfterPreselectOutbound
+  getBookingAfterPreselectOutbound,
+  getBookingAfterPackageOutbound
 } = require("./booking");
+const { parseWebsiteDeepLink } = require("./deepLinks");
+const BOT_ID_TO_ROUTE = {
+  five: "practice_five",
+  five_fire: "practice_five_fire",
+  five_bamboo: "practice_five_bamboo",
+  mukaino: "practice_mukaino",
+  breath: "practice_breath",
+  earthflow: "practice_earthflow",
+  bars: "practice_bars"
+};
 const {
   initConcierge,
   startConciergeOutbound,
@@ -106,12 +117,66 @@ function wrapBookingResult(result, session) {
   return bookingOutbound(result.reply, { skipMenu: true, menuContext: "main" });
 }
 
-function startBooking(session, language, preselectedPracticeId = null) {
-  session.booking = initBooking(language, preselectedPracticeId);
+function startBooking(session, language, preselectedPracticeId = null, options = {}) {
+  session.booking = initBooking(language, preselectedPracticeId, options);
+  if (options.packageName) {
+    return getBookingAfterPackageOutbound(language, session.booking, options.packageName);
+  }
   if (preselectedPracticeId) {
     return getBookingAfterPreselectOutbound(language, session.booking);
   }
   return getBookingStartOutbound(language);
+}
+
+function handleDeepLink(session, userId, deep, language, incomingText, isButton) {
+  const userLabel = isButton ? `[сайт] ${incomingText}` : incomingText;
+
+  switch (deep.action) {
+    case "concierge": {
+      const outbound = startConcierge(session, language);
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
+    case "booking": {
+      const outbound = startBooking(session, language, deep.practiceId || null);
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
+    case "package_booking": {
+      const outbound = startBooking(session, language, null, {
+        packageName: deep.packageName
+      });
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
+    case "practice_detail": {
+      const route = deep.route || BOT_ID_TO_ROUTE[deep.practiceId];
+      if (!route) break;
+      const routeReply = getRouteReply(route, language);
+      const outbound = wrapOutbound(routeReply, route, language);
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply || "");
+      return finish(session, userId, outbound);
+    }
+    case "price": {
+      const outbound = wrapOutbound(getRouteReply("price", language), "price", language);
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply || "");
+      return finish(session, userId, outbound);
+    }
+    case "address": {
+      const outbound = wrapOutbound(getRouteReply("address", language), "address", language);
+      pushHistory(session, "user", userLabel);
+      pushHistory(session, "assistant", outbound.reply || "");
+      return finish(session, userId, outbound);
+    }
+    default:
+      return null;
+  }
+  return null;
 }
 
 function startConcierge(session, language) {
@@ -139,6 +204,19 @@ async function handleIncomingMessage({
     resolveClientLanguage(incomingText, session.language, { isButton })
   );
   session.language = language;
+
+  const deepLink = parseWebsiteDeepLink(incomingText);
+  if (deepLink?.action) {
+    const deepOutbound = handleDeepLink(
+      session,
+      userId,
+      deepLink,
+      language,
+      incomingText,
+      isButton
+    );
+    if (deepOutbound) return deepOutbound;
+  }
 
   const distressed = detectEmotionalDistress(incomingText);
   const explicitBooking = isExplicitBookingRequest(incomingText);

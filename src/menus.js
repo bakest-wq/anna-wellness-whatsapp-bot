@@ -161,7 +161,7 @@ const MENU_CONTEXTS = {
     maxChoice: 4
   },
   default: {
-    items: ["booking", "price", "address", "back"],
+    items: ["concierge", "booking", "price", "address"],
     maxChoice: 4
   }
 };

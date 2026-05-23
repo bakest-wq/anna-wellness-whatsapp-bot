@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Связка с WhatsApp-ботом
+
+Сайт и бот используют общий конфиг `../shared/sakina-wellness.config.js`.
+
+Инструкция по `wa.me` ссылкам и deep links: [docs/WHATSAPP-SITE-INTEGRATION.md](../docs/WHATSAPP-SITE-INTEGRATION.md).
+
 ## Getting Started
 
 First, run the development server:

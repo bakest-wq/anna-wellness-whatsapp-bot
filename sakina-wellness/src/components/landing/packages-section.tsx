@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Sparkles } from "lucide-react";
 import { WELLNESS_PACKAGES } from "@/lib/packages";
-import { buildWhatsAppBookingUrl } from "@/lib/whatsapp";
+import { buildWhatsAppPackageUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/cn";
 import { useBooking } from "./booking-context";
 import { FadeUp, staggerContainer, easeLuxury } from "./motion";
@@ -73,9 +73,7 @@ export function PackagesSection() {
                   {selectedPackageName}
                 </p>
                 <motion.a
-                  href={buildWhatsAppBookingUrl({
-                    packageName: selectedPackageName,
-                  })}
+                  href={buildWhatsAppPackageUrl(selectedPackageId ?? selectedPackageName ?? "")}
                   target="_blank"
                   rel="noopener noreferrer"
                   whileTap={{ scale: 0.99 }}
@@ -104,7 +102,7 @@ function PackageCard({
   onSelect: () => void;
 }) {
   const { enableHoverLift } = useLuxuryMotion();
-  const bookingUrl = buildWhatsAppBookingUrl({ packageName: pkg.name });
+  const bookingUrl = buildWhatsAppPackageUrl(pkg.id);
 
   return (
     <motion.li

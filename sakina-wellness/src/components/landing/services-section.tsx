@@ -3,7 +3,10 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Clock } from "lucide-react";
 import { WELLNESS_SERVICES } from "@/lib/services";
-import { buildWhatsAppBookingUrl } from "@/lib/whatsapp";
+import {
+  buildWhatsAppBookServiceUrl,
+  buildWhatsAppLearnServiceUrl,
+} from "@/lib/whatsapp";
 import { cn } from "@/lib/cn";
 import { useBooking } from "./booking-context";
 import { FadeUp, staggerContainer, easeLuxury } from "./motion";
@@ -79,7 +82,10 @@ export function ServicesSection() {
                   Мы подготовим для вас бережное сообщение в WhatsApp
                 </p>
                 <motion.a
-                  href={buildWhatsAppBookingUrl(selectedServiceTitle)}
+                  href={buildWhatsAppBookServiceUrl(
+                    WELLNESS_SERVICES.find((s) => s.title === selectedServiceTitle)
+                      ?.id ?? "",
+                  )}
                   target="_blank"
                   rel="noopener noreferrer"
                   whileHover={{ scale: 1.01 }}
@@ -110,7 +116,8 @@ function ServiceCard({
 }) {
   const { enableHoverLift } = useLuxuryMotion();
   const Icon = service.icon;
-  const bookingUrl = buildWhatsAppBookingUrl(service.title);
+  const bookingUrl = buildWhatsAppBookServiceUrl(service.id);
+  const learnUrl = buildWhatsAppLearnServiceUrl(service.id);
   const number = String(index + 1).padStart(2, "0");
 
   return (
@@ -215,23 +222,35 @@ function ServiceCard({
           </div>
         </div>
 
-        <motion.a
-          href={bookingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => onSelect()}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.99 }}
-          className={cn(
-            "relative mt-6 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-[15px] font-semibold tracking-wide transition-all duration-400",
-            isSelected ? "btn-gold" : "btn-outline-gold",
-          )}
-        >
-          {isSelected && (
-            <Check className="h-4 w-4" strokeWidth={2} aria-hidden />
-          )}
-          {isSelected ? "Выбрано · Открыть WhatsApp" : "Выбрать сеанс"}
-        </motion.a>
+        <div className="relative mt-6 flex flex-col gap-3">
+          <motion.a
+            href={bookingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => onSelect()}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            className={cn(
+              "flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full text-[15px] font-semibold tracking-wide transition-all duration-400",
+              isSelected ? "btn-gold" : "btn-outline-gold",
+            )}
+          >
+            {isSelected && (
+              <Check className="h-4 w-4" strokeWidth={2} aria-hidden />
+            )}
+            {isSelected ? "Выбрано · Записаться" : "Записаться"}
+          </motion.a>
+          <motion.a
+            href={learnUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            className="text-gold text-center text-[14px] font-medium underline-offset-4 hover:underline"
+          >
+            Подробнее о практике
+          </motion.a>
+        </div>
       </motion.article>
     </motion.li>
   );

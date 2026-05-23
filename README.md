@@ -22,6 +22,13 @@ Node.js backend для WhatsApp-бота premium wellness studio **Sakina Wellne
 - Сохранение заявок в Google Sheets / CRM webhook.
 - OpenAI для свободных вопросов с system prompt в стиле wellness studio.
 - Подробные описания по запросу: «5 континентов» (огонь vs бамбук), «Дыхание Жизни», Gaya Touch + EarthFlow.
+- **Интеграция с сайтом** [sakinawellness.kz](https://sakinawellness.kz/): кнопки ведут в WhatsApp с готовым текстом; бот распознаёт deep links и сразу запускает запись, concierge или карточку практики.
+
+### Сайт + бот (единый конфиг)
+
+- Общие данные: `shared/sakina-wellness.config.js` (услуги, цены, пакеты, `wa.me`-тексты).
+- Сайт: `sakina-wellness/` (Next.js).
+- Инструкция по связке: [docs/WHATSAPP-SITE-INTEGRATION.md](docs/WHATSAPP-SITE-INTEGRATION.md).
 
 ## Практики и студия
 
@@ -97,6 +104,8 @@ POST https://your-domain/webhook
 - `src/router.js` — маршрутизация кнопок
 - `src/conversation.js` — диалог и запись
 - `src/content/` — длинные описания практик
+- `shared/sakina-wellness.config.js` — единый конфиг с сайтом
+- `src/deepLinks.js` — распознавание сообщений с сайта
 
 ## Тон бренда
 

@@ -5,14 +5,19 @@ import { MessageCircle } from "lucide-react";
 import { useBooking } from "./booking-context";
 
 export function StickyWhatsAppCta() {
-  const { bookingUrl, selectionLabel, selectedPackageName } = useBooking();
+  const { bookingUrl, selectionLabel, selectedPackageName, conciergeUrl } =
+    useBooking();
+  const href = selectionLabel ? bookingUrl : conciergeUrl;
+  const label = selectionLabel
+    ? "Подтвердить в WhatsApp"
+    : "🌿 Подобрать практику";
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
       <div className="pointer-events-none h-14 bg-gradient-to-t from-[#FAF7F2]/90 via-[#FAF7F2]/50 to-transparent" />
       <div className="safe-bottom pointer-events-auto px-4 pb-1.5">
         <motion.a
-          href={bookingUrl}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           initial={{ opacity: 0, y: 16 }}
@@ -23,9 +28,7 @@ export function StickyWhatsAppCta() {
         >
           <span className="flex items-center gap-2 text-[14px] font-semibold tracking-[0.02em]">
             <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-            {selectionLabel
-              ? "Подтвердить в WhatsApp"
-              : "Записаться в WhatsApp"}
+            {label}
           </span>
           {selectionLabel && (
             <span className="max-w-full truncate text-[11px] font-medium text-white/90">

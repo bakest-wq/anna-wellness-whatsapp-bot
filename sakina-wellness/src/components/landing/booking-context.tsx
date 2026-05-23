@@ -1,6 +1,9 @@
 "use client";
 
-import { buildWhatsAppBookingUrl } from "@/lib/whatsapp";
+import {
+  buildWhatsAppBookingUrl,
+  buildWhatsAppConciergeUrl,
+} from "@/lib/whatsapp";
 import { getPackageById } from "@/lib/packages";
 import { getServiceById } from "@/lib/services";
 import {
@@ -21,6 +24,7 @@ type BookingContextValue = {
   selectService: (id: string) => void;
   selectPackage: (id: string) => void;
   bookingUrl: string;
+  conciergeUrl: string;
 };
 
 const BookingContext = createContext<BookingContextValue | null>(null);
@@ -55,16 +59,17 @@ export function BookingProvider({ children }: { children: ReactNode }) {
 
   const selectionLabel = selectedPackageName ?? selectedServiceTitle;
 
-  const bookingUrl = useMemo(
-    () =>
-      buildWhatsAppBookingUrl({
-        packageName: selectedPackageName ?? undefined,
-        serviceTitle: selectedPackageName
-          ? undefined
-          : (selectedServiceTitle ?? undefined),
-      }),
-    [selectedPackageName, selectedServiceTitle],
-  );
+  const bookingUrl = useMemo(() => {
+    if (selectedPackageId) {
+      return buildWhatsAppBookingUrl({ packageId: selectedPackageId });
+    }
+    if (selectedServiceId) {
+      return buildWhatsAppBookingUrl({ serviceSiteId: selectedServiceId });
+    }
+    return buildWhatsAppConciergeUrl();
+  }, [selectedPackageId, selectedServiceId]);
+
+  const conciergeUrl = buildWhatsAppConciergeUrl();
 
   const value = useMemo(
     () => ({
@@ -76,6 +81,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       selectService,
       selectPackage,
       bookingUrl,
+      conciergeUrl,
     }),
     [
       selectedServiceId,
@@ -86,6 +92,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       selectService,
       selectPackage,
       bookingUrl,
+      conciergeUrl,
     ],
   );
 

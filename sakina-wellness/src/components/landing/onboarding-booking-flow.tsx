@@ -18,6 +18,7 @@ import {
   ONBOARDING_STEP_COUNT,
   buildConciergeBookingUrl,
 } from "@/lib/booking-flow";
+import { buildWhatsAppConciergeUrl } from "@/lib/whatsapp";
 import { getFeelingById } from "@/lib/wellness-feelings";
 import type { WellnessFeelingId } from "@/lib/wellness-feelings";
 import { getServiceById } from "@/lib/services";
@@ -219,6 +220,14 @@ export function OnboardingBookingFlow() {
             Несколько тихих шагов — мы услышим, что вам сейчас нужно, и подберём
             практику.
           </p>
+          <a
+            href={buildWhatsAppConciergeUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="onboarding-intro__wa-link mt-5 inline-flex text-[14px] font-medium text-[#5F735B] underline-offset-4 hover:underline"
+          >
+            🌿 Или подобрать практику в WhatsApp
+          </a>
         </FadeUp>
 
         <div className="onboarding-card">

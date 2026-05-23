@@ -15,10 +15,11 @@ const {
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
-function initBooking(language, preselectedPracticeId = null) {
+function initBooking(language, preselectedPracticeId = null, options = {}) {
+  const hasPackage = Boolean(options.packageName);
   const booking = {
     active: true,
-    step: preselectedPracticeId ? "day" : "service",
+    step: preselectedPracticeId || hasPackage ? "day" : "service",
     startedAt: Date.now(),
     data: {
       name: "",
@@ -28,7 +29,7 @@ function initBooking(language, preselectedPracticeId = null) {
       day: "",
       time: "",
       contraindications: "",
-      comment: ""
+      comment: hasPackage ? `Пакет: ${options.packageName}` : ""
     },
     language
   };
@@ -36,6 +37,8 @@ function initBooking(language, preselectedPracticeId = null) {
   if (preselectedPracticeId) {
     booking.data.serviceId = preselectedPracticeId;
     booking.data.service = getServiceNameByPracticeId(preselectedPracticeId);
+  } else if (hasPackage) {
+    booking.data.service = options.packageName;
   }
 
   return booking;
@@ -83,6 +86,21 @@ function getBookingAfterPreselectOutbound(language, booking) {
     lang === "kz"
       ? `Керемет таңдау 🤍\n${booking.data.service}\n\n`
       : `Прекрасный выбор 🤍\n${booking.data.service}\n\n`;
+  const text = intro + nextQuestion(booking);
+  return {
+    reply: text,
+    messages: [{ type: "text", text }],
+    skipMenu: true,
+    menuContext: "main"
+  };
+}
+
+function getBookingAfterPackageOutbound(language, booking, packageName) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const intro =
+    lang === "kz"
+      ? `Керемет 🤍\nПакет: ${packageName}\n\n`
+      : `С удовольствием 🤍\nПакет: ${packageName}\n\n`;
   const text = intro + nextQuestion(booking);
   return {
     reply: text,
@@ -259,6 +277,7 @@ module.exports = {
   buildLead,
   getBookingStartOutbound,
   getBookingAfterPreselectOutbound,
+  getBookingAfterPackageOutbound,
   nextQuestion,
   STEPS
 };
