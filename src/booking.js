@@ -12,6 +12,10 @@ const {
   isValidBookingTime,
   isCancellation
 } = require("./validators");
+const {
+  isValidBookingDay,
+  isValidBookingName
+} = require("./flowControl");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
@@ -184,7 +188,13 @@ function processBookingMessage(booking, text, language, options = {}) {
   }
 
   if (booking.step === "day") {
-    if (!text.trim()) return { reply: nextQuestion(booking), skipMenu: true };
+    if (!isValidBookingDay(text)) {
+      const hint =
+        lang === "kz"
+          ? "Күнді жазыңызшы 🌿\n\nМысалы: ертең, 25.05 немесе «дүйсенбі».\n\nБасқа сұрақ болса — «меню» деп жазсаңыз, басты мәзірге ораламыз."
+          : "Напишите, пожалуйста, удобный день 🌿\n\nНапример: завтра, 25.05 или «в субботу».\n\nЕсли хотите начать сначала — напишите «меню».";
+      return { reply: hint, skipMenu: true };
+    }
     booking.data.day = extractDay(text);
     booking.step = "time";
     return { reply: nextQuestion(booking), skipMenu: true };
@@ -202,8 +212,12 @@ function processBookingMessage(booking, text, language, options = {}) {
 
   if (booking.step === "name") {
     const name = text.trim();
-    if (name.length < 2 || name.length > 40 || /\d{5,}/.test(name)) {
-      return { reply: nextQuestion(booking), skipMenu: true };
+    if (!isValidBookingName(name)) {
+      const hint =
+        lang === "kz"
+          ? "Атыңызды жазыңызшы 🤍\n\n2–40 әріп, мысалы: Айгүл."
+          : "Как к вам обращаться? 🤍\n\nИмя из 2–40 букв, например: Айгуль.";
+      return { reply: hint, skipMenu: true };
     }
     booking.data.name = name;
     booking.step = "phone";

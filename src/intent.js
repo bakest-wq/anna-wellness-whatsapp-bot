@@ -118,12 +118,24 @@ const INTENT_RULES = {
     weight: 4
   },
   greeting: {
-    patterns: [/\b(привет|здравств|добрый|сәлем|салем|hello|hi)\b/i],
+    patterns: [
+      /\b(привет|здравств|добрый\s+(день|утро|вечер)|доброе\s+утро)\b/i,
+      /\b(hello|hi|hey|good\s+(morning|afternoon|evening))\b/i,
+      /\b(сәлем|салем|сәлеметсіз|ассалаумағалейкум|ассаламу\s*алейкум)\b/i,
+      /\b(salam|salem|assalamu?\s*aleikum)\b/i
+    ],
     keywords: {
-      ru: ["привет", "здравствуйте", "добрый день", "добрый вечер"],
-      kz: ["сәлем", "салем", "сәлеметсіз бе"]
+      ru: [
+        "привет",
+        "здравствуйте",
+        "здравствуй",
+        "добрый день",
+        "добрый вечер",
+        "доброе утро"
+      ],
+      kz: ["сәлем", "салем", "сәлеметсіз бе", "ассалаумағалейкум"]
     },
-    weight: 2
+    weight: 5
   },
   thanks: {
     patterns: [/\b(спасибо|благодар|рахмет|thanks|thank you)\b/i],
@@ -167,6 +179,15 @@ function detectClientIntent(text, language) {
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const [topIntent, topScore] = sorted[0];
   const [, secondScore] = sorted[1] || ["general", 0];
+
+  const greetingScore = scores.greeting || 0;
+  if (greetingScore >= 2.5) {
+    return {
+      intent: "greeting",
+      confidence: Math.min(1, greetingScore / 6),
+      scores
+    };
+  }
 
   const intent = topScore >= 2 && topScore > secondScore + 0.5 ? topIntent : "general";
 

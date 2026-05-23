@@ -28,6 +28,8 @@ const {
 } = require("./concierge");
 const { isCancellation } = require("./validators");
 const { routeIncomingText, getRouteReply, wrapOutbound } = require("./router");
+const { resetConversationState, syncBookingWaitFlags } = require("./flowState");
+const { evaluateActiveFlow } = require("./flowControl");
 const { getReturningGreeting } = require("./brand");
 const {
   detectEmotionalDistress,
@@ -118,7 +120,9 @@ function wrapBookingResult(result, session) {
 }
 
 function startBooking(session, language, preselectedPracticeId = null, options = {}) {
+  session.concierge = null;
   session.booking = initBooking(language, preselectedPracticeId, options);
+  syncBookingWaitFlags(session);
   if (options.packageName) {
     return getBookingAfterPackageOutbound(language, session.booking, options.packageName);
   }
@@ -181,7 +185,44 @@ function handleDeepLink(session, userId, deep, language, incomingText, isButton)
 
 function startConcierge(session, language) {
   session.concierge = initConcierge(language);
+  session.booking = null;
+  syncBookingWaitFlags(session);
   return startConciergeOutbound(language);
+}
+
+function buildMainMenuWelcome(session, language, options = {}) {
+  const lang = language === "kz" ? "kz" : "ru";
+  let prefix = "";
+
+  if (options.reason === "greeting_or_menu") {
+    prefix =
+      lang === "kz"
+        ? "Әрине 🌿 Жаңа хабарламадан бастайық.\n\n"
+        : "Конечно 🌿 Начнём с чистого листа — без спешки.\n\n";
+  } else if (
+    options.reason === "invalid_booking_answer" ||
+    options.reason === "invalid_concierge_answer"
+  ) {
+    prefix =
+      lang === "kz"
+        ? "Түсінемін — бұл қадамға жауап емес 🌿\n\n"
+        : "Понимаю — это не ответ на текущий шаг 🌿\n\n";
+  } else if (options.reason === "intent" || options.reason === "main_menu") {
+    prefix =
+      lang === "kz"
+        ? "Жақсы 🌿\n\n"
+        : "Хорошо 🌿\n\n";
+  }
+
+  const greeting =
+    welcomeMessage(session, language) || getScenarioResponse("greeting", language);
+  const reply = prefix + greeting;
+  return {
+    reply,
+    messages: [{ type: "text", text: reply }],
+    menuContext: "main",
+    skipMenu: false
+  };
 }
 
 async function handleIncomingMessage({
@@ -227,16 +268,49 @@ async function handleIncomingMessage({
   }
 
   if (isCancellation(incomingText) && (session.booking?.active || session.concierge?.active)) {
-    session.booking = null;
-    session.concierge = null;
+    resetConversationState(session);
     const reply = getScenarioResponse("booking_cancelled", language);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", reply);
     return finish(session, userId, {
       reply,
       messages: [{ type: "text", text: reply }],
-      menuContext: "main"
+      menuContext: "main",
+      skipMenu: false
     });
+  }
+
+  let pendingRoute = null;
+
+  if (session.booking?.active || session.concierge?.active) {
+    const routeForEval = routeIncomingText(incomingText, buttonId, menuContext);
+    const flowEval = evaluateActiveFlow(session, incomingText, language, {
+      isButton,
+      buttonId,
+      menuContext,
+      routeName: routeForEval
+    });
+
+    if (flowEval.mode === "reset") {
+      resetConversationState(session);
+      pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+
+      if (flowEval.route) {
+        pendingRoute = flowEval.route;
+        logger.info("Flow reset → menu route", {
+          userId,
+          route: flowEval.route,
+          reason: flowEval.reason
+        });
+      } else {
+        const outbound = buildMainMenuWelcome(session, language, {
+          reason: flowEval.reason
+        });
+        pushHistory(session, "assistant", outbound.reply);
+        logger.info("Flow reset → main menu", { userId, reason: flowEval.reason });
+        return finish(session, userId, outbound);
+      }
+    }
   }
 
   if (session.concierge?.active) {
@@ -282,11 +356,12 @@ async function handleIncomingMessage({
     const result = processBookingMessage(session.booking, incomingText, language, {
       buttonId,
       buttonText,
-      isButton
+      isButton,
+      menuContext
     });
 
     if (result.cancelled) {
-      session.booking = null;
+      resetConversationState(session);
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       return finish(session, userId, wrapBookingResult(result, session));
@@ -298,7 +373,7 @@ async function handleIncomingMessage({
       if (session.booking.data.name) session.profile.name = session.booking.data.name;
       if (session.booking.data.phone) session.profile.phone = session.booking.data.phone;
       session.profile.visits = (session.profile.visits || 0) + 1;
-      session.booking = null;
+      resetConversationState(session);
       session.emotionalHold = false;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
@@ -306,12 +381,13 @@ async function handleIncomingMessage({
       return finish(session, userId, wrapBookingResult(result, session));
     }
 
+    syncBookingWaitFlags(session);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", result.reply);
     return finish(session, userId, wrapBookingResult(result, session));
   }
 
-  const routeName = routeIncomingText(incomingText, buttonId, menuContext);
+  const routeName = pendingRoute || routeIncomingText(incomingText, buttonId, menuContext);
 
   if (distressed && !isButton) {
     if (routeName === "price") {
@@ -412,11 +488,11 @@ async function handleIncomingMessage({
   }
 
   if (/^(меню|menu|басты меню)$/i.test(incomingText)) {
-    return finish(session, userId, {
-      reply: null,
-      messages: [],
-      menuContext: "main"
-    });
+    resetConversationState(session);
+    const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply);
+    return finish(session, userId, outbound);
   }
 
   const clientIntent = detectClientIntent(incomingText, language);
@@ -494,15 +570,11 @@ async function handleIncomingMessage({
     /^(привет|здравств|сәлем|салем)/i.test(incomingText);
 
   if (isGreeting) {
-    const reply =
-      welcomeMessage(session, language) || getScenarioResponse("greeting", language);
+    resetConversationState(session);
+    const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });
     pushHistory(session, "user", incomingText);
-    pushHistory(session, "assistant", reply);
-    return finish(session, userId, {
-      reply,
-      messages: [{ type: "text", text: reply }],
-      menuContext: "main"
-    });
+    pushHistory(session, "assistant", outbound.reply);
+    return finish(session, userId, outbound);
   }
 
   pushHistory(session, "user", incomingText);
@@ -524,4 +596,8 @@ async function handleIncomingMessage({
   });
 }
 
-module.exports = { handleIncomingMessage };
+module.exports = {
+  handleIncomingMessage,
+  buildMainMenuWelcome,
+  resetConversationState
+};
