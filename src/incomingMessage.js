@@ -4,7 +4,7 @@ const { getSession, updateSession, saveSession } = require("./sessionStore");
 const { normalizeLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
 const { runGlobalIntentGate } = require("./messageRouter");
-const { enrichOutboundMessages, getMenuTextBlock } = require("./menus");
+const { enrichOutboundMessages, getMenuTextBlock, isMainMenuContext } = require("./menus");
 const {
   parseIncomingMessage,
   sendWhatsApp,
@@ -12,9 +12,15 @@ const {
   tryInteractiveButtonsOnly
 } = require("./whatsapp");
 
-const MENU_DELAY_MS = Number(process.env.MENU_AFTER_REPLY_DELAY_MS || 700);
 const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
-const MENU_BUTTONS_AFTER = process.env.MENU_BUTTONS_AFTER !== "false";
+/** Главное меню — только текст; интерактивные кнопки ломаются при >3 пунктах */
+const MENU_BUTTONS_AFTER =
+  process.env.MENU_BUTTONS_AFTER === "true" || process.env.MENU_BUTTONS_AFTER === "1";
+
+function shouldSendInteractiveButtons(menuContext) {
+  if (isMainMenuContext(menuContext)) return false;
+  return MENU_BUTTONS_AFTER;
+}
 
 async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
   const toSend =
@@ -27,19 +33,6 @@ async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
       config: waConfig,
       to: userId,
       messages: toSend,
-      logger
-    });
-  }
-
-  if (MENU_BUTTONS_AFTER && waConfig.provider === "green") {
-    if (toSend.length) {
-      await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
-    }
-    await tryInteractiveButtonsOnly({
-      config: waConfig,
-      to: userId,
-      language: lang,
-      menuContext: "main",
       logger
     });
   }
@@ -79,13 +72,11 @@ async function processIncomingMessage({
 
   const session = getSession(payload.userId);
 
-  // 1. Normalize text (до любой логики)
   const incomingText = String(payload.buttonText || payload.text || "").trim();
   let lang = normalizeLanguage(session.language);
 
   console.log("INCOMING TEXT:", incomingText);
 
-  // 2–3. Global intent + reset + main menu (ДО handleIncomingMessage / booking)
   if (!webhookTestReply && incomingText) {
     const gate = runGlobalIntentGate({
       chatId: payload.userId,
@@ -139,7 +130,7 @@ async function processIncomingMessage({
       openai,
       model,
       logger,
-      notifyAdmin,
+      notifyAdmin
     });
   }
 
@@ -180,23 +171,17 @@ async function processIncomingMessage({
     });
   }
 
-  if (!result?.skipMenu && MENU_BUTTONS_AFTER && waConfig.provider === "green") {
-    if (toSend.length) {
-      await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
-    }
-
-    const menuResult = await tryInteractiveButtonsOnly({
+  if (
+    !result?.skipMenu &&
+    shouldSendInteractiveButtons(menuContext) &&
+    waConfig.provider === "green"
+  ) {
+    await tryInteractiveButtonsOnly({
       config: waConfig,
       to: payload.userId,
       language: lang,
       menuContext,
       logger
-    });
-
-    logger.info("Optional menu buttons", {
-      userId: payload.userId,
-      menuContext,
-      mode: menuResult?.mode
     });
   }
 

@@ -15,14 +15,38 @@ const {
   CARD_ACTIONS
 } = require("./concierge/conciergeMenus");
 
+/** Premium главное меню — только текст (fallback), без смешения языков */
+const MAIN_MENU_TEXT = {
+  ru: `🌿 Что вам сейчас ближе?
+
+1️⃣ 🌸 Помочь подобрать практику
+2️⃣ 📅 Записаться
+3️⃣ 💰 Цены
+4️⃣ 📍 Адрес
+5️⃣ ⚠️ Противопоказания
+6️⃣ 🌿 Подробнее о практиках
+
+Можно просто отправить цифру 🤍`,
+  kz: `🌿 Қазір сізге не жақын?
+
+1️⃣ 🌸 Практика таңдауға көмектесу
+2️⃣ 📅 Жазылу
+3️⃣ 💰 Бағалар
+4️⃣ 📍 Мекенжай
+5️⃣ ⚠️ Қарсы көрсетілімдер
+6️⃣ 🌿 Практикалар туралы
+
+Жай ғана санды жіберсеңіз болады 🤍`
+};
+
 const ITEMS = {
   concierge: {
     id: "btn_concierge",
     route: "concierge",
-    ru: "🌿 Помочь подобрать практику",
-    kz: "🌿 Практиканы таңдауға көмек",
+    ru: "🌸 Помочь подобрать практику",
+    kz: "🌸 Практика таңдауға көмектесу",
     labelRu: "Помочь подобрать практику",
-    labelKz: "Практиканы таңдауға көмек",
+    labelKz: "Практика таңдауға көмектесу",
     descRu: "Мягкий подбор",
     descKz: "Жұмсақ таңдау"
   },
@@ -60,19 +84,19 @@ const ITEMS = {
     id: "btn_contra",
     route: "contraindications",
     ru: "⚠️ Противопоказания",
-    kz: "⚠️ Қарсы көрсетілім",
+    kz: "⚠️ Қарсы көрсетілімдер",
     labelRu: "Противопоказания",
-    labelKz: "Қарсы көрсетілім",
+    labelKz: "Қарсы көрсетілімдер",
     descRu: "Рекомендации",
     descKz: "Абайлау"
   },
   practices: {
     id: "btn_practices",
     route: "practices",
-    ru: "🌸 Подробнее о практиках",
-    kz: "🌸 Практикалар",
+    ru: "🌿 Подробнее о практиках",
+    kz: "🌿 Практикалар туралы",
     labelRu: "Подробнее о практиках",
-    labelKz: "Практикалар",
+    labelKz: "Практикалар туралы",
     descRu: "Что мы делаем",
     descKz: "Практикалар"
   },
@@ -323,15 +347,7 @@ function getMenuTextBlock(language, context = "main") {
   }
 
   if (context === "main" || context === "default") {
-    const items = getContextItems(context);
-    const intro =
-      lang === "ru"
-        ? "Выберите, пожалуйста, что вам сейчас ближе:"
-        : "Қазір не жақын?";
-    const lines = items.map((item, i) => `${i + 1}️⃣ ${item[lang]}`).join("\n");
-    const footer =
-      lang === "ru" ? "Можно просто отправить цифру 🌿" : "Санды жіберіңіз 🌿";
-    return `${intro}\n\n${lines}\n\n${footer}`;
+    return MAIN_MENU_TEXT[lang];
   }
 
   const items = getContextItems(context);
@@ -348,11 +364,16 @@ function getTextMenuFallback(language, context = "main") {
   return getMenuTextBlock(language, context);
 }
 
+function isMainMenuContext(context) {
+  return context === "main" || context === "default";
+}
+
 function messageAlreadyHasMenu(text) {
   if (!text) return false;
   return (
-    /[1-8]️⃣/.test(text) ||
-    /Можно просто отправить цифру|Санды жіберіңіз 🌿|Можно отправить цифру 🌿/.test(text)
+    /Что вам сейчас ближе|Қазір сізге не жақын/.test(text) ||
+    /Можно просто отправить цифру 🤍|Жай ғана санды жіберсеңіз болады 🤍/.test(text) ||
+    (/[1-6]️⃣/.test(text) && /Помочь подобрать|Практика таңдау|Записаться|Жазылу/.test(text))
   );
 }
 
@@ -414,8 +435,13 @@ LABEL_TO_ROUTE["артқа"] = "back";
 LABEL_TO_ROUTE["подробнее о практиках"] = "practices";
 LABEL_TO_ROUTE["практикалар"] = "practices";
 LABEL_TO_ROUTE["помочь подобрать практику"] = "concierge";
+LABEL_TO_ROUTE["практика таңдауға көмектесу"] = "concierge";
 LABEL_TO_ROUTE["практиканы таңдауға көмек"] = "concierge";
 LABEL_TO_ROUTE["подобрать практику"] = "concierge";
+LABEL_TO_ROUTE["практикалар туралы"] = "practices";
+LABEL_TO_ROUTE["қарсы көрсетілімдер"] = "contraindications";
+LABEL_TO_ROUTE["жазылу"] = "booking";
+LABEL_TO_ROUTE["мекенжай"] = "address";
 LABEL_TO_ROUTE["как проходит сеанс"] = "session";
 LABEL_TO_ROUTE["сеанс қалай"] = "session";
 registerPracticeLabels(LABEL_TO_ROUTE, normalizeLabel);
@@ -483,6 +509,7 @@ function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
 module.exports = {
   ITEMS,
   MENU_CONTEXTS,
+  MAIN_MENU_TEXT,
   ID_TO_ROUTE,
   MAIN_NUMERIC,
   getMenuContextForRoute,
@@ -492,5 +519,7 @@ module.exports = {
   appendMenuToReply,
   enrichOutboundMessages,
   resolveMenuAction,
-  getContextItems
+  getContextItems,
+  isMainMenuContext,
+  messageAlreadyHasMenu
 };

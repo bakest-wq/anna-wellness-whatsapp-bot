@@ -66,7 +66,7 @@ function buildMainMenuOutbound(session, language) {
     reply,
     messages: [{ type: "text", text: reply }],
     menuContext: "main",
-    skipMenu: false
+    skipMenu: true
   };
 }
 
