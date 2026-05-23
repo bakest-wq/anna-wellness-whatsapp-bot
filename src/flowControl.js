@@ -1,6 +1,12 @@
 const { detectClientIntent } = require("./intent");
 const { isValidBookingTime, isCancellation } = require("./validators");
 const { resolveBookingServiceChoice } = require("./content/practices");
+const {
+  isBookingFlowActive,
+  isConciergeFlowActive,
+  getNextMissingBookingStep,
+  isSoftResetCommand
+} = require("./sessionMemory");
 
 const GREETING_PATTERNS = [
   /^(здравствуйте|здравствуй|привет|приветствую|доброго\s+времени|добрый\s+(день|утро|вечер)|доброе\s+утро)\b/i,
@@ -70,8 +76,19 @@ function shouldForceFlowReset(text, options = {}) {
   if (options.isButton) return false;
   const t = normalizeText(text);
   if (!t) return false;
-  if (isMenuResetCommand(t)) return true;
+  if (isSoftResetCommand(t) || isMenuResetCommand(t)) return true;
   if (isGreetingOrSocialText(t)) return true;
+  return false;
+}
+
+/** Мягкий сброс: в меню, данные клиента не теряются */
+function shouldSoftFlowReset(text, options = {}) {
+  if (options.isButton) return false;
+  const t = normalizeText(text);
+  if (!t) return false;
+  if (isSoftResetCommand(t)) return true;
+  if (isGreetingOrSocialText(t)) return true;
+  if (isMenuResetCommand(t)) return true;
   return false;
 }
 
@@ -124,8 +141,11 @@ function isValidBookingName(text) {
   return true;
 }
 
-function isValidBookingStepInput(text, booking, language, options = {}) {
-  const step = booking?.step;
+function isValidBookingStepInput(text, sessionOrBooking, language, options = {}) {
+  const step =
+    sessionOrBooking?.currentStep ||
+    sessionOrBooking?.step ||
+    getNextMissingBookingStep(sessionOrBooking || {});
   const raw = normalizeText(text);
   if (!raw && step !== "contraindications") return false;
 
@@ -172,8 +192,9 @@ function looksLikeConciergeStepInput(text, concierge, options = {}) {
  * Решает: продолжать FSM, сбросить в главное меню или сбросить и открыть маршрут с кнопки.
  */
 function evaluateActiveFlow(session, incomingText, language, options = {}) {
-  const bookingActive = Boolean(session.booking?.active);
-  const conciergeActive = Boolean(session.concierge?.active);
+  const bookingActive = isBookingFlowActive(session) || Boolean(session.booking?.active);
+  const conciergeActive =
+    isConciergeFlowActive(session) || Boolean(session.concierge?.active);
   if (!bookingActive && !conciergeActive) {
     return { mode: "free" };
   }
@@ -185,27 +206,31 @@ function evaluateActiveFlow(session, incomingText, language, options = {}) {
   }
 
   if (isMainMenuNavigation(routeName, menuContext)) {
-    return { mode: "reset", route: routeName, reason: "main_menu" };
+    return { mode: "soft_reset", route: routeName, reason: "main_menu" };
   }
 
-  if (shouldForceFlowReset(incomingText, { isButton })) {
-    return { mode: "reset", reason: "greeting_or_menu" };
+  if (shouldSoftFlowReset(incomingText, { isButton })) {
+    return { mode: "soft_reset", reason: "greeting_or_menu" };
   }
 
   const intentResult = detectClientIntent(incomingText, language);
   const { intent, confidence } = intentResult;
 
   if (bookingActive) {
-    if (isValidBookingStepInput(incomingText, session.booking, language, options)) {
+    const bookingCtx = session.booking?.active
+      ? session.booking
+      : { ...session, step: session.currentStep };
+
+    if (isValidBookingStepInput(incomingText, bookingCtx, language, options)) {
       return { mode: "continue_booking" };
     }
 
     if (!isButton && isInterruptIntent(intent, confidence)) {
-      return { mode: "reset", reason: "intent", intent };
+      return { mode: "soft_reset", reason: "intent", intent };
     }
 
     if (!isButton) {
-      return { mode: "reset", reason: "invalid_booking_answer" };
+      return { mode: "soft_reset", reason: "invalid_booking_answer" };
     }
 
     return { mode: "continue_booking" };
@@ -217,11 +242,11 @@ function evaluateActiveFlow(session, incomingText, language, options = {}) {
     }
 
     if (!isButton && (isInterruptIntent(intent, confidence) || isGreetingOrSocialText(incomingText))) {
-      return { mode: "reset", reason: "intent", intent };
+      return { mode: "soft_reset", reason: "intent", intent };
     }
 
     if (!isButton) {
-      return { mode: "reset", reason: "invalid_concierge_answer" };
+      return { mode: "soft_reset", reason: "invalid_concierge_answer" };
     }
 
     return { mode: "continue_concierge" };
@@ -231,12 +256,17 @@ function evaluateActiveFlow(session, incomingText, language, options = {}) {
 }
 
 function hasActiveFlow(session) {
-  return Boolean(session.booking?.active || session.concierge?.active);
+  return (
+    isBookingFlowActive(session) ||
+    isConciergeFlowActive(session) ||
+    Boolean(session.booking?.active || session.concierge?.active)
+  );
 }
 
 module.exports = {
   evaluateActiveFlow,
   shouldForceFlowReset,
+  shouldSoftFlowReset,
   isGreetingOrSocialText,
   isValidBookingStepInput,
   isValidBookingDay,

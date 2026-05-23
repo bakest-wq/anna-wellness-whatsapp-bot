@@ -1,4 +1,5 @@
 const { isCancellation } = require("../validators");
+const { isConciergeFlowActive } = require("../sessionMemory");
 const { recommendPractice } = require("./recommendationEngine");
 const {
   EMOTIONS,
@@ -70,10 +71,31 @@ function startConciergeOutbound(language) {
 /**
  * @returns {{ handled: boolean, outbound?: object, action?: string, practiceId?: string }}
  */
-function processConciergeMessage(session, text, language, options = {}) {
-  const concierge = session.concierge;
-  if (!concierge?.active) return { handled: false };
+function ensureConciergeMirror(session, language) {
+  if (session.concierge?.active) return session.concierge;
+  session.concierge = initConcierge(language);
+  session.concierge.emotion = session.emotionalState;
+  session.concierge.outcome = session.desiredOutcome;
+  session.concierge.practiceId = session.recommendedPractice;
+  session.concierge.step = session.currentStep || "emotion";
+  return session.concierge;
+}
 
+function persistConciergeToSession(session, concierge) {
+  session.currentFlow = "concierge";
+  session.currentStep = concierge.step;
+  session.emotionalState = concierge.emotion;
+  session.desiredOutcome = concierge.outcome;
+  session.recommendedPractice = concierge.practiceId;
+  if (concierge.practiceId) session.lastPracticeId = concierge.practiceId;
+}
+
+function processConciergeMessage(session, text, language, options = {}) {
+  if (!isConciergeFlowActive(session) && !session.concierge?.active) {
+    return { handled: false };
+  }
+
+  const concierge = ensureConciergeMirror(session, language);
   const lang = language === "kz" ? "kz" : "ru";
 
   if (isCancellation(text)) {
@@ -119,6 +141,7 @@ function processConciergeMessage(session, text, language, options = {}) {
 
     concierge.emotion = emotionId;
     concierge.step = "outcome";
+    persistConciergeToSession(session, concierge);
     const reply = `${getEmotionTransition(lang)}\n\n${getOutcomeQuestion(lang)}`;
     return {
       handled: true,
@@ -162,7 +185,7 @@ function processConciergeMessage(session, text, language, options = {}) {
     concierge.practiceId = match.practiceId;
     concierge.alternatives = match.alternatives;
     concierge.step = "result";
-    session.lastPracticeId = match.practiceId;
+    persistConciergeToSession(session, concierge);
 
     const reply = `${getMatchingTransition(lang)}\n\n${buildRecommendationCard(lang, match.practiceId)}`;
     return {

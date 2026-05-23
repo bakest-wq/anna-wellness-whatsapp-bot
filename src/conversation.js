@@ -2,15 +2,27 @@ const { detectClientIntent } = require("./intent");
 const { resolveClientLanguage, normalizeLanguage } = require("./language");
 const { getScenarioResponse } = require("./responses");
 const { getAiReply } = require("./ai");
-const { getSession, updateSession } = require("./sessionStore");
+const { getSession, saveSession } = require("./sessionStore");
 const {
-  initBooking,
-  processBookingMessage,
+  processBookingSession,
   buildLead,
   getBookingStartOutbound,
   getBookingAfterPreselectOutbound,
-  getBookingAfterPackageOutbound
+  getBookingAfterPackageOutbound,
+  getResumeBookingOutbound
 } = require("./booking");
+const {
+  startBookingFlow,
+  startConciergeFlow,
+  hasResumableBooking,
+  isBookingFlowActive,
+  isConciergeFlowActive,
+  syncLegacyMirrors,
+  softResetFlow,
+  hardResetFlow,
+  completeBookingFlow,
+  clearConciergeFields
+} = require("./sessionMemory");
 const { parseWebsiteDeepLink } = require("./deepLinks");
 const BOT_ID_TO_ROUTE = {
   five: "practice_five",
@@ -72,7 +84,9 @@ function welcomeMessage(session, language) {
 }
 
 function finish(session, userId, outbound) {
-  updateSession(userId, session);
+  syncLegacyMirrors(session);
+  syncBookingWaitFlags(session);
+  saveSession(userId, session);
   return outbound;
 }
 
@@ -109,7 +123,10 @@ function wrapBookingResult(result, session) {
     return bookingOutbound(result.reply, { skipMenu: false, menuContext: "main" });
   }
 
-  if (session.booking?.active && session.booking.step === "service") {
+  if (
+    isBookingFlowActive(session) &&
+    (session.currentStep === "service" || session.booking?.step === "service")
+  ) {
     return bookingOutbound(result.reply, {
       skipMenu: false,
       menuContext: "booking_service"
@@ -120,14 +137,36 @@ function wrapBookingResult(result, session) {
 }
 
 function startBooking(session, language, preselectedPracticeId = null, options = {}) {
+  clearConciergeFields(session);
   session.concierge = null;
-  session.booking = initBooking(language, preselectedPracticeId, options);
+
+  if (
+    hasResumableBooking(session) &&
+    !preselectedPracticeId &&
+    !options.packageName &&
+    !options.forceNew
+  ) {
+    session.currentFlow = "booking";
+    syncBookingWaitFlags(session);
+    syncLegacyMirrors(session);
+    return getResumeBookingOutbound(session, language);
+  }
+
+  startBookingFlow(session, {
+    language,
+    practiceId: preselectedPracticeId,
+    packageName: options.packageName,
+    source: options.source || "whatsapp",
+    resetDraft: Boolean(options.forceNew)
+  });
   syncBookingWaitFlags(session);
+  syncLegacyMirrors(session);
+
   if (options.packageName) {
-    return getBookingAfterPackageOutbound(language, session.booking, options.packageName);
+    return getBookingAfterPackageOutbound(session, language, options.packageName);
   }
   if (preselectedPracticeId) {
-    return getBookingAfterPreselectOutbound(language, session.booking);
+    return getBookingAfterPreselectOutbound(session, language);
   }
   return getBookingStartOutbound(language);
 }
@@ -184,9 +223,8 @@ function handleDeepLink(session, userId, deep, language, incomingText, isButton)
 }
 
 function startConcierge(session, language) {
-  session.concierge = initConcierge(language);
-  session.booking = null;
-  syncBookingWaitFlags(session);
+  startConciergeFlow(session, language);
+  syncLegacyMirrors(session);
   return startConciergeOutbound(language);
 }
 
@@ -267,8 +305,13 @@ async function handleIncomingMessage({
     logger.info("Emotional distress detected", { userId });
   }
 
-  if (isCancellation(incomingText) && (session.booking?.active || session.concierge?.active)) {
-    resetConversationState(session);
+  if (
+    isCancellation(incomingText) &&
+    (isBookingFlowActive(session) || isConciergeFlowActive(session))
+  ) {
+    hardResetFlow(session);
+    session.booking = null;
+    session.concierge = null;
     const reply = getScenarioResponse("booking_cancelled", language);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", reply);
@@ -282,7 +325,9 @@ async function handleIncomingMessage({
 
   let pendingRoute = null;
 
-  if (session.booking?.active || session.concierge?.active) {
+  syncLegacyMirrors(session);
+
+  if (isBookingFlowActive(session) || isConciergeFlowActive(session)) {
     const routeForEval = routeIncomingText(incomingText, buttonId, menuContext);
     const flowEval = evaluateActiveFlow(session, incomingText, language, {
       isButton,
@@ -291,13 +336,15 @@ async function handleIncomingMessage({
       routeName: routeForEval
     });
 
-    if (flowEval.mode === "reset") {
-      resetConversationState(session);
+    if (flowEval.mode === "soft_reset") {
+      softResetFlow(session);
+      session.booking = null;
+      session.concierge = null;
       pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
 
       if (flowEval.route) {
         pendingRoute = flowEval.route;
-        logger.info("Flow reset → menu route", {
+        logger.info("Flow soft reset → menu route", {
           userId,
           route: flowEval.route,
           reason: flowEval.reason
@@ -307,13 +354,16 @@ async function handleIncomingMessage({
           reason: flowEval.reason
         });
         pushHistory(session, "assistant", outbound.reply);
-        logger.info("Flow reset → main menu", { userId, reason: flowEval.reason });
+        logger.info("Flow soft reset → main menu", {
+          userId,
+          reason: flowEval.reason
+        });
         return finish(session, userId, outbound);
       }
     }
   }
 
-  if (session.concierge?.active) {
+  if (isConciergeFlowActive(session)) {
     const conciergeResult = processConciergeMessage(session, incomingText, language, {
       buttonId,
       buttonText,
@@ -352,8 +402,8 @@ async function handleIncomingMessage({
     }
   }
 
-  if (session.booking?.active) {
-    const result = processBookingMessage(session.booking, incomingText, language, {
+  if (isBookingFlowActive(session)) {
+    const result = processBookingSession(session, incomingText, language, {
       buttonId,
       buttonText,
       isButton,
@@ -361,19 +411,21 @@ async function handleIncomingMessage({
     });
 
     if (result.cancelled) {
-      resetConversationState(session);
+      hardResetFlow(session);
+      session.booking = null;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       return finish(session, userId, wrapBookingResult(result, session));
     }
 
     if (result.done) {
-      const lead = buildLead(session.booking, userId, language);
+      const lead = buildLead(session, userId, language);
       await notifyAdmin(lead);
-      if (session.booking.data.name) session.profile.name = session.booking.data.name;
-      if (session.booking.data.phone) session.profile.phone = session.booking.data.phone;
+      if (session.clientName) session.profile.name = session.clientName;
+      if (session.clientPhone) session.profile.phone = session.clientPhone;
       session.profile.visits = (session.profile.visits || 0) + 1;
-      resetConversationState(session);
+      completeBookingFlow(session);
+      session.booking = null;
       session.emotionalHold = false;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
@@ -381,6 +433,7 @@ async function handleIncomingMessage({
       return finish(session, userId, wrapBookingResult(result, session));
     }
 
+    syncLegacyMirrors(session);
     syncBookingWaitFlags(session);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", result.reply);
@@ -458,6 +511,13 @@ async function handleIncomingMessage({
     }
 
     if (routeName === "booking") {
+      if (hasResumableBooking(session) && !isButton) {
+        session.currentFlow = "booking";
+        const outbound = getResumeBookingOutbound(session, language);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply);
+        return finish(session, userId, outbound);
+      }
       if (distressed && !explicitBooking && !isButton) {
         const outbound = emotionalOutbound(incomingText, language, session, {
           explicitBooking: true
@@ -488,7 +548,9 @@ async function handleIncomingMessage({
   }
 
   if (/^(меню|menu|басты меню)$/i.test(incomingText)) {
-    resetConversationState(session);
+    softResetFlow(session);
+    session.booking = null;
+    session.concierge = null;
     const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", outbound.reply);
@@ -570,7 +632,9 @@ async function handleIncomingMessage({
     /^(привет|здравств|сәлем|салем)/i.test(incomingText);
 
   if (isGreeting) {
-    resetConversationState(session);
+    softResetFlow(session);
+    session.booking = null;
+    session.concierge = null;
     const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", outbound.reply);

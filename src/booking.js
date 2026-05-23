@@ -16,40 +16,19 @@ const {
   isValidBookingDay,
   isValidBookingName
 } = require("./flowControl");
+const {
+  getNextMissingBookingStep,
+  syncCurrentStep,
+  prefillClientFromProfile,
+  isBookingComplete,
+  getResumeStepLabel,
+  getSessionSnapshotForLead
+} = require("./sessionMemory");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
-function initBooking(language, preselectedPracticeId = null, options = {}) {
-  const hasPackage = Boolean(options.packageName);
-  const booking = {
-    active: true,
-    step: preselectedPracticeId || hasPackage ? "day" : "service",
-    startedAt: Date.now(),
-    data: {
-      name: "",
-      phone: "",
-      service: "",
-      serviceId: "",
-      day: "",
-      time: "",
-      contraindications: "",
-      comment: hasPackage ? `Пакет: ${options.packageName}` : ""
-    },
-    language
-  };
-
-  if (preselectedPracticeId) {
-    booking.data.serviceId = preselectedPracticeId;
-    booking.data.service = getServiceNameByPracticeId(preselectedPracticeId);
-  } else if (hasPackage) {
-    booking.data.service = options.packageName;
-  }
-
-  return booking;
-}
-
-function nextQuestion(booking) {
-  const lang = booking.language === "kz" ? "kz" : "ru";
+function questionForStep(step, session, language) {
+  const lang = language === "kz" ? "kz" : "ru";
   const q = {
     ru: {
       service: getBookingServiceIntro("ru"),
@@ -71,7 +50,18 @@ function nextQuestion(booking) {
         "Денсаулық ерекшеліктері бар ма — абайлап ескерейік 🌿\n\nМысалы: жүктілік, қысым, аллергия.\n\nЖоқ болса — «жоқ» деп жазсаңыз болады."
     }
   };
-  return q[lang][booking.step] || q.ru[booking.step];
+  return q[lang][step] || q.ru[step];
+}
+
+function buildResumeIntro(session, language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const step = getNextMissingBookingStep(session);
+  const where = getResumeStepLabel(step, language);
+
+  if (lang === "kz") {
+    return `Сізбен жазылуды жалғастырамыз 🌿\nТоқтаған жер: ${where}.\n\n`;
+  }
+  return `Продолжим запись с того места, где остановились 🌿\nМы остановились на ${where}.\n\n`;
 }
 
 function getBookingStartOutbound(language) {
@@ -84,13 +74,30 @@ function getBookingStartOutbound(language) {
   };
 }
 
-function getBookingAfterPreselectOutbound(language, booking) {
+function getBookingAfterPreselectOutbound(session, language) {
   const lang = language === "kz" ? "kz" : "ru";
   const intro =
     lang === "kz"
-      ? `Керемет таңдау 🤍\n${booking.data.service}\n\n`
-      : `Прекрасный выбор 🤍\n${booking.data.service}\n\n`;
-  const text = intro + nextQuestion(booking);
+      ? `Керемет таңдау 🤍\n${session.selectedPracticeTitle}\n\n`
+      : `Прекрасный выбор 🤍\n${session.selectedPracticeTitle}\n\n`;
+  syncCurrentStep(session);
+  const text = intro + questionForStep(session.currentStep, session, language);
+  return {
+    reply: text,
+    messages: [{ type: "text", text }],
+    skipMenu: session.currentStep !== "service",
+    menuContext: session.currentStep === "service" ? "booking_service" : "main"
+  };
+}
+
+function getBookingAfterPackageOutbound(session, language, packageName) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const intro =
+    lang === "kz"
+      ? `Керемет 🤍\nПакет: ${packageName}\n\n`
+      : `С удовольствием 🤍\nПакет: ${packageName}\n\n`;
+  syncCurrentStep(session);
+  const text = intro + questionForStep(session.currentStep, session, language);
   return {
     reply: text,
     messages: [{ type: "text", text }],
@@ -99,18 +106,18 @@ function getBookingAfterPreselectOutbound(language, booking) {
   };
 }
 
-function getBookingAfterPackageOutbound(language, booking, packageName) {
-  const lang = language === "kz" ? "kz" : "ru";
-  const intro =
-    lang === "kz"
-      ? `Керемет 🤍\nПакет: ${packageName}\n\n`
-      : `С удовольствием 🤍\nПакет: ${packageName}\n\n`;
-  const text = intro + nextQuestion(booking);
+function getResumeBookingOutbound(session, language) {
+  syncCurrentStep(session);
+  prefillClientFromProfile(session);
+  syncCurrentStep(session);
+  const text =
+    buildResumeIntro(session, language) +
+    questionForStep(session.currentStep, session, language);
   return {
     reply: text,
     messages: [{ type: "text", text }],
-    skipMenu: true,
-    menuContext: "main"
+    skipMenu: session.currentStep !== "service",
+    menuContext: session.currentStep === "service" ? "booking_service" : "main"
   };
 }
 
@@ -127,17 +134,18 @@ function isNoContraindications(text, lang) {
   return /^(нет|no|жоқ|жок|-|—|нету|жоқпын)$/i.test(t);
 }
 
-function applyServiceChoice(booking, practiceId) {
-  booking.data.serviceId = practiceId;
-  booking.data.service = getServiceNameByPracticeId(practiceId);
-  booking.step = "day";
+function applyPracticeToSession(session, practiceId) {
+  session.selectedPractice = practiceId;
+  session.selectedPracticeTitle = getServiceNameByPracticeId(practiceId);
+  session.lastPracticeId = practiceId;
+  syncCurrentStep(session);
 }
 
-function resolveServiceFromInput(booking, text, options = {}) {
+function resolveServiceFromInput(session, text, options = {}) {
   const choice = resolveBookingServiceChoice(text, options.buttonId);
   if (choice?.cancelled) return { cancelled: true };
   if (choice?.practiceId) {
-    applyServiceChoice(booking, choice.practiceId);
+    applyPracticeToSession(session, choice.practiceId);
     return { ok: true };
   }
 
@@ -145,103 +153,36 @@ function resolveServiceFromInput(booking, text, options = {}) {
   if (matched) {
     const svc = SERVICES.find((s) => s.name === matched);
     if (svc) {
-      applyServiceChoice(booking, svc.id);
+      applyPracticeToSession(session, svc.id);
       return { ok: true };
     }
-    booking.data.service = matched;
-    booking.step = "day";
+    session.selectedPracticeTitle = matched;
+    syncCurrentStep(session);
     return { ok: true };
   }
 
   return { ok: false };
 }
 
-function processBookingMessage(booking, text, language, options = {}) {
+/**
+ * Запись через session state — спрашиваем только недостающие поля.
+ */
+function processBookingSession(session, text, language, options = {}) {
   if (language === "kz" || language === "ru") {
-    booking.language = language;
+    session.language = language;
   }
-  const lang = booking.language === "kz" ? "kz" : "ru";
+  const lang = session.language === "kz" ? "kz" : "ru";
+
+  prefillClientFromProfile(session);
+  syncCurrentStep(session);
 
   if (isCancellation(text)) {
-    booking.active = false;
     return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
   }
 
-  if (booking.step === "service") {
-    const resolved = resolveServiceFromInput(booking, text, options);
-    if (resolved.cancelled) {
-      booking.active = false;
-      return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
-    }
-    if (resolved.ok) {
-      return {
-        reply: nextQuestion(booking),
-        menuContext: null,
-        skipMenu: true
-      };
-    }
-    return {
-      reply: nextQuestion(booking),
-      menuContext: "booking_service",
-      skipMenu: false
-    };
-  }
+  let step = getNextMissingBookingStep(session);
 
-  if (booking.step === "day") {
-    if (!isValidBookingDay(text)) {
-      const hint =
-        lang === "kz"
-          ? "Күнді жазыңызшы 🌿\n\nМысалы: ертең, 25.05 немесе «дүйсенбі».\n\nБасқа сұрақ болса — «меню» деп жазсаңыз, басты мәзірге ораламыз."
-          : "Напишите, пожалуйста, удобный день 🌿\n\nНапример: завтра, 25.05 или «в субботу».\n\nЕсли хотите начать сначала — напишите «меню».";
-      return { reply: hint, skipMenu: true };
-    }
-    booking.data.day = extractDay(text);
-    booking.step = "time";
-    return { reply: nextQuestion(booking), skipMenu: true };
-  }
-
-  if (booking.step === "time") {
-    const timeCheck = isValidBookingTime(text);
-    if (!timeCheck.ok) {
-      return { reply: getScenarioResponse("invalid_time", lang), skipMenu: true };
-    }
-    booking.data.time = timeCheck.parsed;
-    booking.step = "name";
-    return { reply: nextQuestion(booking), skipMenu: true };
-  }
-
-  if (booking.step === "name") {
-    const name = text.trim();
-    if (!isValidBookingName(name)) {
-      const hint =
-        lang === "kz"
-          ? "Атыңызды жазыңызшы 🤍\n\n2–40 әріп, мысалы: Айгүл."
-          : "Как к вам обращаться? 🤍\n\nИмя из 2–40 букв, например: Айгуль.";
-      return { reply: hint, skipMenu: true };
-    }
-    booking.data.name = name;
-    booking.step = "phone";
-    return { reply: nextQuestion(booking), skipMenu: true };
-  }
-
-  if (booking.step === "phone") {
-    const phone = normalizePhone(text);
-    if (!isValidPhone(phone)) {
-      return { reply: getScenarioResponse("invalid_phone", lang), skipMenu: true };
-    }
-    booking.data.phone = phone;
-    booking.step = "contraindications";
-    return { reply: nextQuestion(booking), skipMenu: true };
-  }
-
-  if (booking.step === "contraindications") {
-    booking.data.contraindications = isNoContraindications(text, lang)
-      ? lang === "kz"
-        ? "жоқ"
-        : "нет"
-      : text.trim();
-    booking.step = "done";
-    booking.active = false;
+  if (step === "complete") {
     return {
       done: true,
       reply: getScenarioResponse("booking_complete", lang),
@@ -250,11 +191,117 @@ function processBookingMessage(booking, text, language, options = {}) {
     };
   }
 
-  return { reply: nextQuestion(booking), skipMenu: true };
+  session.currentStep = step;
+
+  if (step === "service") {
+    const resolved = resolveServiceFromInput(session, text, options);
+    if (resolved.cancelled) {
+      return { cancelled: true, reply: getScenarioResponse("booking_cancelled", lang) };
+    }
+    if (resolved.ok) {
+      syncCurrentStep(session);
+      return {
+        reply: questionForStep(session.currentStep, session, language),
+        skipMenu: session.currentStep !== "service",
+        menuContext:
+          session.currentStep === "service" ? "booking_service" : "main"
+      };
+    }
+    return {
+      reply: questionForStep("service", session, language),
+      menuContext: "booking_service",
+      skipMenu: false
+    };
+  }
+
+  if (step === "day") {
+    if (!isValidBookingDay(text)) {
+      const hint =
+        lang === "kz"
+          ? "Күнді жазыңызшы 🌿\n\nМысалы: ертең, 25.05 немесе «дүйсенбі»."
+          : "Напишите, пожалуйста, удобный день 🌿\n\nНапример: завтра, 25.05 или «в субботу».";
+      return { reply: hint, skipMenu: true };
+    }
+    session.bookingDate = extractDay(text);
+    syncCurrentStep(session);
+    return {
+      reply: questionForStep(session.currentStep, session, language),
+      skipMenu: true
+    };
+  }
+
+  if (step === "time") {
+    const timeCheck = isValidBookingTime(text);
+    if (!timeCheck.ok) {
+      return { reply: getScenarioResponse("invalid_time", lang), skipMenu: true };
+    }
+    session.bookingTime = timeCheck.parsed;
+    syncCurrentStep(session);
+    return {
+      reply: questionForStep(session.currentStep, session, language),
+      skipMenu: true
+    };
+  }
+
+  if (step === "name") {
+    const name = text.trim();
+    if (!isValidBookingName(name)) {
+      const hint =
+        lang === "kz"
+          ? "Атыңызды жазыңызшы 🤍\n\n2–40 әріп, мысалы: Айгүл."
+          : "Как к вам обращаться? 🤍\n\nИмя из 2–40 букв, например: Айгуль.";
+      return { reply: hint, skipMenu: true };
+    }
+    session.clientName = name;
+    if (session.profile) session.profile.name = name;
+    syncCurrentStep(session);
+    return {
+      reply: questionForStep(session.currentStep, session, language),
+      skipMenu: true
+    };
+  }
+
+  if (step === "phone") {
+    const phone = normalizePhone(text);
+    if (!isValidPhone(phone)) {
+      return { reply: getScenarioResponse("invalid_phone", lang), skipMenu: true };
+    }
+    session.clientPhone = phone;
+    if (session.profile) session.profile.phone = phone;
+    syncCurrentStep(session);
+    return {
+      reply: questionForStep(session.currentStep, session, language),
+      skipMenu: true
+    };
+  }
+
+  if (step === "contraindications") {
+    session.contraindications = isNoContraindications(text, lang)
+      ? lang === "kz"
+        ? "жоқ"
+        : "нет"
+      : text.trim();
+    session.currentFlow = null;
+    session.currentStep = null;
+
+    if (isBookingComplete(session)) {
+      return {
+        done: true,
+        reply: getScenarioResponse("booking_complete", lang),
+        skipMenu: false,
+        menuContext: "main"
+      };
+    }
+  }
+
+  return {
+    reply: questionForStep(getNextMissingBookingStep(session), session, language),
+    skipMenu: true
+  };
 }
 
-function buildLead(booking, userId, language) {
-  const d = booking.data;
+function buildLead(session, userId, language) {
+  const d = getSessionSnapshotForLead(session);
   const langLabel = language === "kz" ? "Казахский" : "Русский";
   const contraLine = d.contraindications
     ? `⚠️ Особенности: ${d.contraindications}\n`
@@ -268,7 +315,7 @@ function buildLead(booking, userId, language) {
 💆 Практика: ${d.service}
 📅 День: ${d.day}
 🕐 Время: ${d.time}
-${contraLine}📍 Источник: Sakina Wellness · WhatsApp`,
+${contraLine}📍 Источник: ${d.source || "Sakina Wellness · WhatsApp"}`,
     payload: {
       name: d.name || "—",
       phone: d.phone || userId,
@@ -279,19 +326,72 @@ ${contraLine}📍 Источник: Sakina Wellness · WhatsApp`,
       time: d.time,
       contraindications: d.contraindications || "—",
       comment: d.comment || "—",
-      source: "Sakina Wellness · WhatsApp",
+      source: d.source || "Sakina Wellness · WhatsApp",
       userId
     }
   };
 }
 
+/** @deprecated — используйте startBookingFlow + processBookingSession */
+function initBooking(language, preselectedPracticeId = null, options = {}) {
+  return {
+    active: true,
+    step: preselectedPracticeId || options.packageName ? "day" : "service",
+    startedAt: Date.now(),
+    data: {
+      name: "",
+      phone: "",
+      service: preselectedPracticeId
+        ? getServiceNameByPracticeId(preselectedPracticeId)
+        : options.packageName || "",
+      serviceId: preselectedPracticeId || "",
+      day: "",
+      time: "",
+      contraindications: "",
+      comment: options.packageName ? `Пакет: ${options.packageName}` : ""
+    },
+    language
+  };
+}
+
+/** @deprecated */
+function processBookingMessage(booking, text, language, options = {}) {
+  const session = {
+    language,
+    currentFlow: "booking",
+    selectedPractice: booking.data.serviceId || null,
+    selectedPracticeTitle: booking.data.service,
+    bookingDate: booking.data.day || null,
+    bookingTime: booking.data.time || null,
+    clientName: booking.data.name || null,
+    clientPhone: booking.data.phone || null,
+    contraindications: booking.data.contraindications || null,
+    bookingComment: booking.data.comment || null,
+    profile: { name: "", phone: "", visits: 0 }
+  };
+  syncCurrentStep(session);
+  const result = processBookingSession(session, text, language, options);
+  booking.active = session.currentFlow === "booking";
+  booking.step = session.currentStep || booking.step;
+  booking.data.serviceId = session.selectedPractice || "";
+  booking.data.service = session.selectedPracticeTitle || "";
+  booking.data.day = session.bookingDate || "";
+  booking.data.time = session.bookingTime || "";
+  booking.data.name = session.clientName || "";
+  booking.data.phone = session.clientPhone || "";
+  booking.data.contraindications = session.contraindications || "";
+  return result;
+}
+
 module.exports = {
-  initBooking,
+  processBookingSession,
   processBookingMessage,
   buildLead,
   getBookingStartOutbound,
   getBookingAfterPreselectOutbound,
   getBookingAfterPackageOutbound,
-  nextQuestion,
+  getResumeBookingOutbound,
+  questionForStep,
+  initBooking,
   STEPS
 };

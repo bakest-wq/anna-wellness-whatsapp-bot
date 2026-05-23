@@ -106,6 +106,8 @@ POST https://your-domain/webhook
 - `src/content/` — длинные описания практик
 - `shared/sakina-wellness.config.js` — единый конфиг с сайтом
 - `src/deepLinks.js` — распознавание сообщений с сайта
+- `src/sessionStore.js` — session memory (Map, готово к Redis/Postgres)
+- `src/sessionMemory.js` — логика flow, resume, expiry 24ч
 
 ## Тон бренда
 

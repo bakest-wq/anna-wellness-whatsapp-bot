@@ -1,40 +1,42 @@
-const { getSession, updateSession } = require("./sessionStore");
+const { saveSession } = require("./sessionStore");
+const {
+  softResetFlow,
+  hardResetFlow,
+  syncCurrentStep,
+  isBookingFlowActive
+} = require("./sessionMemory");
 
 /**
- * Полный сброс активных сценариев — «новый разговор» с главным меню.
- * @param {object} session
+ * Мягкий сброс flow (черновик записи сохраняется для продолжения <24ч).
  */
-function resetConversationState(session) {
+function resetConversationState(session, chatId) {
+  softResetFlow(session);
   session.booking = null;
   session.concierge = null;
-  session.emotionalHold = false;
-  session.emotionalHoldUntil = null;
-  session.lastPracticeId = null;
-  session.menuContext = "main";
-  session.pendingStep = null;
-  session.waitingForTime = false;
-  session.waitingForDate = false;
-  session.waitingForPhone = false;
+  if (chatId) {
+    saveSession(chatId, session, ["softResetFlow"]);
+  }
   return session;
 }
 
 function resetConversationStateByUserId(userId) {
+  const { getSession } = require("./sessionStore");
   const session = getSession(userId);
-  resetConversationState(session);
-  updateSession(userId, session);
-  return session;
+  return resetConversationState(session, userId);
 }
 
 function syncBookingWaitFlags(session) {
-  const step = session.booking?.active ? session.booking.step : null;
+  const step = isBookingFlowActive(session) ? session.currentStep : null;
   session.waitingForDate = step === "day";
   session.waitingForTime = step === "time";
   session.waitingForPhone = step === "phone";
   session.pendingStep = step;
+  syncCurrentStep(session);
 }
 
 module.exports = {
   resetConversationState,
   resetConversationStateByUserId,
+  hardResetFlow,
   syncBookingWaitFlags
 };
