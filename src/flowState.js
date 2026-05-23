@@ -7,15 +7,28 @@ const {
 } = require("./sessionMemory");
 
 /**
- * Мягкий сброс flow (черновик записи сохраняется для продолжения <24ч).
+ * Сброс активного flow → главное меню. Черновик записи (<24ч) сохраняется.
  */
 function resetConversationState(session, chatId) {
+  const previousFlow = session.currentFlow;
+
   softResetFlow(session);
+
   session.booking = null;
   session.concierge = null;
+  session.waitingForTime = false;
+  session.waitingForDate = false;
+  session.waitingForPhone = false;
+  session.pendingStep = null;
+
   if (chatId) {
-    saveSession(chatId, session, ["softResetFlow"]);
+    saveSession(chatId, session, ["resetConversationState"]);
   }
+
+  if (previousFlow) {
+    console.log("resetConversationState: cleared flow", previousFlow);
+  }
+
   return session;
 }
 
@@ -26,12 +39,21 @@ function resetConversationStateByUserId(userId) {
 }
 
 function syncBookingWaitFlags(session) {
-  const step = isBookingFlowActive(session) ? session.currentStep : null;
+  if (!isBookingFlowActive(session)) {
+    session.waitingForDate = false;
+    session.waitingForTime = false;
+    session.waitingForPhone = false;
+    session.pendingStep = null;
+    return session;
+  }
+
+  syncCurrentStep(session);
+  const step = session.currentStep;
   session.waitingForDate = step === "day";
   session.waitingForTime = step === "time";
   session.waitingForPhone = step === "phone";
   session.pendingStep = step;
-  syncCurrentStep(session);
+  return session;
 }
 
 module.exports = {

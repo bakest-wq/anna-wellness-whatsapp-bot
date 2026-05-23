@@ -7,6 +7,7 @@ const {
   getNextMissingBookingStep,
   isSoftResetCommand
 } = require("./sessionMemory");
+const { isGlobalResetIntent } = require("./globalIntents");
 
 const GREETING_PATTERNS = [
   /^(здравствуйте|здравствуй|привет|приветствую|доброго\s+времени|добрый\s+(день|утро|вечер)|доброе\s+утро)\b/i,
@@ -201,6 +202,10 @@ function evaluateActiveFlow(session, incomingText, language, options = {}) {
 
   const { isButton, buttonId, menuContext, routeName } = options;
 
+  if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
+    return { mode: "soft_reset", reason: "global_intent", route: routeName || null };
+  }
+
   if (isCancellation(incomingText)) {
     return { mode: "cancel" };
   }
@@ -267,6 +272,7 @@ module.exports = {
   evaluateActiveFlow,
   shouldForceFlowReset,
   shouldSoftFlowReset,
+  isGlobalResetIntent,
   isGreetingOrSocialText,
   isValidBookingStepInput,
   isValidBookingDay,

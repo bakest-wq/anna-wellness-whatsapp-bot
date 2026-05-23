@@ -42,6 +42,10 @@ const { isCancellation } = require("./validators");
 const { routeIncomingText, getRouteReply, wrapOutbound } = require("./router");
 const { resetConversationState, syncBookingWaitFlags } = require("./flowState");
 const { evaluateActiveFlow } = require("./flowControl");
+const {
+  isGlobalResetIntent,
+  getGlobalResetRoute
+} = require("./globalIntents");
 const { getReturningGreeting } = require("./brand");
 const {
   detectEmotionalDistress,
@@ -284,6 +288,36 @@ async function handleIncomingMessage({
   );
   session.language = language;
 
+  let pendingRoute = null;
+
+  // ━━━ PRIORITY 1: глобальные intent'ы (ДО booking / concierge / waitingFor*) ━━━
+  if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
+    console.log("GLOBAL RESET TRIGGERED");
+    console.log("CURRENT FLOW:", session.currentFlow);
+    console.log("INCOMING:", incomingText);
+
+    const menuRoute = isButton
+      ? getGlobalResetRoute(buttonId, incomingText, menuContext)
+      : null;
+
+    resetConversationState(session, userId);
+    session.booking = null;
+    session.concierge = null;
+
+    pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+
+    if (menuRoute) {
+      pendingRoute = menuRoute;
+      logger.info("Global reset → route after menu", { userId, route: menuRoute });
+    } else {
+      const outbound = buildMainMenuWelcome(session, language, {
+        reason: "greeting_or_menu"
+      });
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
+  }
+
   const deepLink = parseWebsiteDeepLink(incomingText);
   if (deepLink?.action) {
     const deepOutbound = handleDeepLink(
@@ -323,11 +357,13 @@ async function handleIncomingMessage({
     });
   }
 
-  let pendingRoute = null;
-
+  // ━━━ PRIORITY 2: активный flow — только если не глобальный сброс ━━━
   syncLegacyMirrors(session);
 
-  if (isBookingFlowActive(session) || isConciergeFlowActive(session)) {
+  if (
+    !pendingRoute &&
+    (isBookingFlowActive(session) || isConciergeFlowActive(session))
+  ) {
     const routeForEval = routeIncomingText(incomingText, buttonId, menuContext);
     const flowEval = evaluateActiveFlow(session, incomingText, language, {
       isButton,
@@ -337,33 +373,26 @@ async function handleIncomingMessage({
     });
 
     if (flowEval.mode === "soft_reset") {
-      softResetFlow(session);
+      console.log("GLOBAL RESET TRIGGERED");
+      console.log("CURRENT FLOW:", session.currentFlow);
+      resetConversationState(session, userId);
       session.booking = null;
       session.concierge = null;
       pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
 
       if (flowEval.route) {
         pendingRoute = flowEval.route;
-        logger.info("Flow soft reset → menu route", {
-          userId,
-          route: flowEval.route,
-          reason: flowEval.reason
-        });
       } else {
         const outbound = buildMainMenuWelcome(session, language, {
           reason: flowEval.reason
         });
         pushHistory(session, "assistant", outbound.reply);
-        logger.info("Flow soft reset → main menu", {
-          userId,
-          reason: flowEval.reason
-        });
         return finish(session, userId, outbound);
       }
     }
   }
 
-  if (isConciergeFlowActive(session)) {
+  if (!pendingRoute && isConciergeFlowActive(session)) {
     const conciergeResult = processConciergeMessage(session, incomingText, language, {
       buttonId,
       buttonText,
@@ -402,13 +431,35 @@ async function handleIncomingMessage({
     }
   }
 
-  if (isBookingFlowActive(session)) {
+  if (!pendingRoute && isBookingFlowActive(session)) {
+    if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
+      console.log("GLOBAL RESET TRIGGERED (booking guard)");
+      resetConversationState(session, userId);
+      const outbound = buildMainMenuWelcome(session, language, {
+        reason: "greeting_or_menu"
+      });
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
+
     const result = processBookingSession(session, incomingText, language, {
       buttonId,
       buttonText,
       isButton,
       menuContext
     });
+
+    if (result.globalReset) {
+      resetConversationState(session, userId);
+      session.booking = null;
+      const outbound = buildMainMenuWelcome(session, language, {
+        reason: "greeting_or_menu"
+      });
+      pushHistory(session, "user", incomingText);
+      pushHistory(session, "assistant", outbound.reply);
+      return finish(session, userId, outbound);
+    }
 
     if (result.cancelled) {
       hardResetFlow(session);
@@ -547,8 +598,8 @@ async function handleIncomingMessage({
     return finish(session, userId, outbound);
   }
 
-  if (/^(меню|menu|басты меню)$/i.test(incomingText)) {
-    softResetFlow(session);
+  if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
+    resetConversationState(session, userId);
     session.booking = null;
     session.concierge = null;
     const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });
@@ -631,8 +682,8 @@ async function handleIncomingMessage({
     clientIntent.intent === "greeting" ||
     /^(привет|здравств|сәлем|салем)/i.test(incomingText);
 
-  if (isGreeting) {
-    softResetFlow(session);
+  if (isGreeting || isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
+    resetConversationState(session, userId);
     session.booking = null;
     session.concierge = null;
     const outbound = buildMainMenuWelcome(session, language, { reason: "greeting_or_menu" });

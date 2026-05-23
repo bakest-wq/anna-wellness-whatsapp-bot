@@ -140,7 +140,9 @@ function startBookingFlow(session, options = {}) {
 
   session.currentFlow = "booking";
   session.language = language || session.language || "ru";
-  session.flowStartedAt = session.flowStartedAt || new Date().toISOString();
+  const now = new Date().toISOString();
+  session.flowStartedAt = session.flowStartedAt || now;
+  session.lastFlowActivityAt = now;
   if (source) session.source = source;
 
   if (practiceId) {
@@ -165,7 +167,9 @@ function startConciergeFlow(session, language) {
   session.currentFlow = "concierge";
   session.currentStep = "emotion";
   session.language = language || session.language || "ru";
-  session.flowStartedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  session.flowStartedAt = now;
+  session.lastFlowActivityAt = now;
   clearConciergeFields(session);
   return session;
 }

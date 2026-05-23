@@ -24,6 +24,7 @@ const {
   getResumeStepLabel,
   getSessionSnapshotForLead
 } = require("./sessionMemory");
+const { isGlobalResetIntent } = require("./globalIntents");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
@@ -168,10 +169,18 @@ function resolveServiceFromInput(session, text, options = {}) {
  * Запись через session state — спрашиваем только недостающие поля.
  */
 function processBookingSession(session, text, language, options = {}) {
+  if (isGlobalResetIntent(text, options)) {
+    return { globalReset: true };
+  }
+
   if (language === "kz" || language === "ru") {
     session.language = language;
   }
   const lang = session.language === "kz" ? "kz" : "ru";
+
+  if (session.currentFlow !== "booking") {
+    session.currentFlow = "booking";
+  }
 
   prefillClientFromProfile(session);
   syncCurrentStep(session);

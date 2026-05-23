@@ -3,6 +3,8 @@
  */
 
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 24 * 60 * 60 * 1000;
+const FLOW_INACTIVITY_MS =
+  Number(process.env.FLOW_INACTIVITY_MS) || 30 * 60 * 1000;
 
 /** @typedef {import('./sessionMemory').SessionRecord} SessionRecord */
 
@@ -56,6 +58,8 @@ function createDefaultSession(chatId) {
     source: "whatsapp",
     lastIntent: null,
     updatedAt: new Date().toISOString(),
+    lastUpdatedAt: new Date().toISOString(),
+    lastFlowActivityAt: null,
     flowStartedAt: null,
     history: [],
     profile: { name: "", phone: "", visits: 0 },
@@ -117,6 +121,38 @@ function normalizeLegacySession(raw, chatId) {
 }
 
 /**
+ * Неактивный flow >30 мин — сброс FSM, данные клиента сохраняются.
+ */
+function applyFlowInactivityTimeout(session) {
+  if (!session?.currentFlow) return session;
+
+  const ref =
+    session.lastFlowActivityAt || session.flowStartedAt || session.lastUpdatedAt;
+  if (!ref) return session;
+
+  const idle = Date.now() - new Date(ref).getTime();
+  if (idle < FLOW_INACTIVITY_MS) return session;
+
+  console.log("FLOW INACTIVITY RESET (>30min):", session.chatId);
+  console.log("CURRENT FLOW:", session.currentFlow);
+
+  session.currentFlow = null;
+  session.currentStep = null;
+  session.emotionalState = null;
+  session.desiredOutcome = null;
+  session.recommendedPractice = null;
+  session.flowStartedAt = null;
+  session.waitingForTime = false;
+  session.waitingForDate = false;
+  session.waitingForPhone = false;
+  session.pendingStep = null;
+  session.menuContext = "main";
+
+  session.lastUpdatedAt = new Date().toISOString();
+  return session;
+}
+
+/**
  * Сброс flow после 24ч: язык и имя сохраняются.
  */
 function applySessionExpiry(session) {
@@ -174,6 +210,7 @@ function getSession(chatId) {
   }
 
   session = applySessionExpiry(session);
+  session = applyFlowInactivityTimeout(session);
   if (adapter.map) adapter.map.set(chatId, session);
   return session;
 }
@@ -181,8 +218,10 @@ function getSession(chatId) {
 function patchSession(chatId, patch, options = {}) {
   const session = getSession(chatId);
   const keys = Object.keys(patch);
+  const now = new Date().toISOString();
   Object.assign(session, patch, {
-    updatedAt: new Date().toISOString()
+    updatedAt: now,
+    lastUpdatedAt: now
   });
   if (adapter.map) adapter.map.set(chatId, session);
   if (!options.silent) {
@@ -196,8 +235,17 @@ function updateSession(chatId, patch) {
   return patchSession(chatId, patch);
 }
 
+function touchFlowActivity(session) {
+  if (session.currentFlow) {
+    session.lastFlowActivityAt = new Date().toISOString();
+  }
+}
+
 function saveSession(chatId, session, changedKeys = []) {
-  session.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  session.updatedAt = now;
+  session.lastUpdatedAt = now;
+  touchFlowActivity(session);
   if (adapter.map) adapter.map.set(chatId, session);
   logSessionUpdate(chatId, session, changedKeys);
   return session;
@@ -209,12 +257,15 @@ function loadAll() {
 
 module.exports = {
   SESSION_TTL_MS,
+  FLOW_INACTIVITY_MS,
   createDefaultSession,
   getSession,
   patchSession,
   updateSession,
   saveSession,
+  touchFlowActivity,
   applySessionExpiry,
+  applyFlowInactivityTimeout,
   logSessionUpdate,
   setSessionAdapter,
   MemorySessionAdapter,
