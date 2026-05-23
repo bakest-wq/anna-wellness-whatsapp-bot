@@ -77,6 +77,21 @@ function getBookingStartOutbound(language) {
   };
 }
 
+function getBookingAfterPreselectOutbound(language, booking) {
+  const lang = language === "kz" ? "kz" : "ru";
+  const intro =
+    lang === "kz"
+      ? `Керемет таңдау 🤍\n${booking.data.service}\n\n`
+      : `Прекрасный выбор 🤍\n${booking.data.service}\n\n`;
+  const text = intro + nextQuestion(booking);
+  return {
+    reply: text,
+    messages: [{ type: "text", text }],
+    skipMenu: true,
+    menuContext: "main"
+  };
+}
+
 function extractDay(text) {
   const t = text.toLowerCase();
   if (/завтра|ертең/.test(t)) return "завтра";
@@ -243,6 +258,7 @@ module.exports = {
   processBookingMessage,
   buildLead,
   getBookingStartOutbound,
+  getBookingAfterPreselectOutbound,
   nextQuestion,
   STEPS
 };

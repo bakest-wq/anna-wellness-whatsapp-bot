@@ -12,6 +12,7 @@ const {
 } = require("./whatsapp");
 
 const MENU_DELAY_MS = Number(process.env.MENU_AFTER_REPLY_DELAY_MS || 700);
+const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
 const MENU_BUTTONS_AFTER = process.env.MENU_BUTTONS_AFTER !== "false";
 
 async function processIncomingMessage({
@@ -88,6 +89,10 @@ async function processIncomingMessage({
   const toSend = result?.skipMenu
     ? outbound
     : enrichOutboundMessages(outbound, lang, menuContext);
+
+  if (result?.conciergeTyping && toSend.length) {
+    await new Promise((r) => setTimeout(r, CONCIERGE_DELAY_MS));
+  }
 
   if (toSend.length) {
     await sendOutboundMessages({

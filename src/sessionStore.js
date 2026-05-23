@@ -42,6 +42,8 @@ function defaultSession() {
     language: "ru",
     history: [],
     booking: null,
+    concierge: null,
+    lastPracticeId: null,
     profile: { name: "", phone: "", visits: 0 },
     lastIntent: null,
     menuContext: "main",

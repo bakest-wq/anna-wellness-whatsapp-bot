@@ -5,8 +5,27 @@ const {
   resolvePracticePickerChoice,
   registerPracticeLabels
 } = require("./content/practices");
+const {
+  getConciergeEmotionMenu,
+  getConciergeOutcomeMenu,
+  getConciergeCardMenu,
+  buildConciergeButtons,
+  EMOTIONS,
+  OUTCOMES,
+  CARD_ACTIONS
+} = require("./concierge");
 
 const ITEMS = {
+  concierge: {
+    id: "btn_concierge",
+    route: "concierge",
+    ru: "🌿 Помочь подобрать практику",
+    kz: "🌿 Практиканы таңдауға көмек",
+    labelRu: "Помочь подобрать практику",
+    labelKz: "Практиканы таңдауға көмек",
+    descRu: "Мягкий подбор",
+    descKz: "Жұмсақ таңдау"
+  },
   price: {
     id: "btn_price",
     route: "price",
@@ -91,8 +110,23 @@ const ITEMS = {
 
 const MENU_CONTEXTS = {
   main: {
-    items: ["booking", "price", "address", "back"],
+    items: ["concierge", "booking", "price", "address"],
     maxChoice: 4
+  },
+  concierge_emotion: {
+    type: "concierge_list",
+    list: "emotions",
+    maxChoice: 8
+  },
+  concierge_outcome: {
+    type: "concierge_list",
+    list: "outcomes",
+    maxChoice: 7
+  },
+  concierge_card: {
+    type: "concierge_list",
+    list: "card",
+    maxChoice: 3
   },
   practices_picker: {
     type: "practice_picker",
@@ -133,15 +167,24 @@ const MENU_CONTEXTS = {
 };
 
 const MAIN_NUMERIC = {
-  1: "booking",
-  2: "price",
-  3: "address",
-  4: "back"
+  1: "concierge",
+  2: "booking",
+  3: "price",
+  4: "address"
 };
 
 const ID_TO_ROUTE = Object.fromEntries(Object.values(ITEMS).map((i) => [i.id, i.route]));
 for (const p of PRACTICE_PICKER) {
   ID_TO_ROUTE[p.buttonId] = p.route;
+}
+for (const e of EMOTIONS) {
+  ID_TO_ROUTE[e.buttonId] = "concierge_emotion_pick";
+}
+for (const o of OUTCOMES) {
+  ID_TO_ROUTE[o.buttonId] = "concierge_outcome_pick";
+}
+for (const c of CARD_ACTIONS) {
+  ID_TO_ROUTE[c.buttonId] = c.route;
 }
 
 const ROUTE_TO_MENU = {
@@ -163,6 +206,10 @@ const ROUTE_TO_MENU = {
   breathing_gaya_earthflow: "after_practices",
   five_continents: "after_practices",
   back: "main",
+  concierge: "concierge_emotion",
+  concierge_detail: "after_practice_detail",
+  concierge_book: "main",
+  concierge_other: "practices_picker",
   booking: "booking_service",
   greeting: "main",
   thanks: "main"
@@ -185,6 +232,36 @@ function getContextItems(context) {
 
 function buildMenuBlock(language, context, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
+
+  if (context === "concierge_emotion") {
+    return {
+      context,
+      header: BRAND.header,
+      body: "👇",
+      footer: getMenuFooter(),
+      buttons: buildConciergeButtons(EMOTIONS, lang, 3)
+    };
+  }
+
+  if (context === "concierge_outcome") {
+    return {
+      context,
+      header: BRAND.header,
+      body: "👇",
+      footer: getMenuFooter(),
+      buttons: buildConciergeButtons(OUTCOMES, lang, 3)
+    };
+  }
+
+  if (context === "concierge_card") {
+    return {
+      context,
+      header: BRAND.header,
+      body: "👇",
+      footer: getMenuFooter(),
+      buttons: buildConciergeButtons(CARD_ACTIONS, lang, 3)
+    };
+  }
 
   if (context === "practices_picker" || context === "booking_service") {
     const buttons = [
@@ -231,24 +308,36 @@ function getMenuTextBlock(language, context = "main") {
     return getPracticePickerMenuBlock(language);
   }
 
+  if (context === "concierge_emotion") {
+    return getConciergeEmotionMenu(language);
+  }
+
+  if (context === "concierge_outcome") {
+    return getConciergeOutcomeMenu(language);
+  }
+
+  if (context === "concierge_card") {
+    return getConciergeCardMenu(language);
+  }
+
   if (context === "main" || context === "default") {
     if (lang === "ru") {
       return `Выберите, пожалуйста, что вам сейчас ближе:
 
-1️⃣ Записаться
-2️⃣ Цены
-3️⃣ Адрес
-4️⃣ Назад
+1️⃣ Помочь подобрать практику
+2️⃣ Записаться
+3️⃣ Цены
+4️⃣ Адрес
 
 Можно просто отправить цифру 🌿`;
     }
 
     return `Қазір не жақын?
 
-1️⃣ Жазылу
-2️⃣ Бағалар
-3️⃣ Мекенжай
-4️⃣ Артқа
+1️⃣ Практиканы таңдауға көмек
+2️⃣ Жазылу
+3️⃣ Бағалар
+4️⃣ Мекенжай
 
 Санды жіберіңіз 🌿`;
   }
@@ -332,6 +421,9 @@ LABEL_TO_ROUTE["назад"] = "back";
 LABEL_TO_ROUTE["артқа"] = "back";
 LABEL_TO_ROUTE["подробнее о практиках"] = "practices";
 LABEL_TO_ROUTE["практикалар"] = "practices";
+LABEL_TO_ROUTE["помочь подобрать практику"] = "concierge";
+LABEL_TO_ROUTE["практиканы таңдауға көмек"] = "concierge";
+LABEL_TO_ROUTE["подобрать практику"] = "concierge";
 LABEL_TO_ROUTE["как проходит сеанс"] = "session";
 LABEL_TO_ROUTE["сеанс қалай"] = "session";
 registerPracticeLabels(LABEL_TO_ROUTE, normalizeLabel);
@@ -344,6 +436,11 @@ function parseNumericChoice(text, menuContext) {
   if (!digit) return null;
 
   const n = Number(digit[1]);
+
+  if (menuContext === "concierge_card") {
+    const action = CARD_ACTIONS[n - 1];
+    return action?.route || null;
+  }
 
   if (menuContext === "practices_picker" || menuContext === "booking_service") {
     if (n === 8) return "back";

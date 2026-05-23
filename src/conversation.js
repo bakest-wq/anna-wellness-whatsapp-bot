@@ -7,8 +7,14 @@ const {
   initBooking,
   processBookingMessage,
   buildLead,
-  getBookingStartOutbound
+  getBookingStartOutbound,
+  getBookingAfterPreselectOutbound
 } = require("./booking");
+const {
+  initConcierge,
+  startConciergeOutbound,
+  processConciergeMessage
+} = require("./concierge");
 const { isCancellation } = require("./validators");
 const { routeIncomingText, getRouteReply, wrapOutbound } = require("./router");
 const { getReturningGreeting } = require("./brand");
@@ -100,9 +106,17 @@ function wrapBookingResult(result, session) {
   return bookingOutbound(result.reply, { skipMenu: true, menuContext: "main" });
 }
 
-function startBooking(session, language) {
-  session.booking = initBooking(language);
+function startBooking(session, language, preselectedPracticeId = null) {
+  session.booking = initBooking(language, preselectedPracticeId);
+  if (preselectedPracticeId) {
+    return getBookingAfterPreselectOutbound(language, session.booking);
+  }
   return getBookingStartOutbound(language);
+}
+
+function startConcierge(session, language) {
+  session.concierge = initConcierge(language);
+  return startConciergeOutbound(language);
 }
 
 async function handleIncomingMessage({
@@ -134,8 +148,9 @@ async function handleIncomingMessage({
     logger.info("Emotional distress detected", { userId });
   }
 
-  if (isCancellation(incomingText) && session.booking?.active) {
+  if (isCancellation(incomingText) && (session.booking?.active || session.concierge?.active)) {
     session.booking = null;
+    session.concierge = null;
     const reply = getScenarioResponse("booking_cancelled", language);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", reply);
@@ -144,6 +159,45 @@ async function handleIncomingMessage({
       messages: [{ type: "text", text: reply }],
       menuContext: "main"
     });
+  }
+
+  if (session.concierge?.active) {
+    const conciergeResult = processConciergeMessage(session, incomingText, language, {
+      buttonId,
+      buttonText,
+      isButton
+    });
+
+    if (conciergeResult.handled) {
+      if (conciergeResult.action === "practice_detail") {
+        const routeReply = getRouteReply(conciergeResult.route, language);
+        const outbound = wrapOutbound(routeReply, conciergeResult.route, language);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply || "");
+        return finish(session, userId, outbound);
+      }
+
+      if (conciergeResult.action === "book") {
+        const outbound = startBooking(session, language, conciergeResult.practiceId);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply);
+        return finish(session, userId, outbound);
+      }
+
+      if (conciergeResult.action === "other_practices") {
+        const routeReply = getRouteReply("practices", language);
+        const outbound = wrapOutbound(routeReply, "practices", language);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply || "");
+        return finish(session, userId, outbound);
+      }
+
+      if (conciergeResult.outbound) {
+        pushHistory(session, "user", incomingText);
+        pushHistory(session, "assistant", conciergeResult.outbound.reply || "");
+        return finish(session, userId, conciergeResult.outbound);
+      }
+    }
   }
 
   if (session.booking?.active) {
@@ -222,6 +276,33 @@ async function handleIncomingMessage({
       });
     }
 
+    if (routeName === "concierge") {
+      const outbound = startConcierge(session, language);
+      pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+      pushHistory(session, "assistant", outbound.reply);
+      logger.info("Concierge started", { userId });
+      return finish(session, userId, outbound);
+    }
+
+    if (
+      routeName === "concierge_detail" ||
+      routeName === "concierge_book" ||
+      routeName === "concierge_other"
+    ) {
+      if (routeName === "concierge_book" && session.lastPracticeId) {
+        const outbound = startBooking(session, language, session.lastPracticeId);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply);
+        return finish(session, userId, outbound);
+      }
+      if (routeName === "concierge_other") {
+        const outbound = wrapOutbound(getRouteReply("practices", language), "practices", language);
+        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+        pushHistory(session, "assistant", outbound.reply || "");
+        return finish(session, userId, outbound);
+      }
+    }
+
     if (routeName === "booking") {
       if (distressed && !explicitBooking && !isButton) {
         const outbound = emotionalOutbound(incomingText, language, session, {
@@ -282,6 +363,13 @@ async function handleIncomingMessage({
     intent: clientIntent.intent,
     confidence: clientIntent.confidence
   });
+
+  if (clientIntent.intent === "concierge") {
+    const outbound = startConcierge(session, language);
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply);
+    return finish(session, userId, outbound);
+  }
 
   if (clientIntent.intent === "booking") {
     const outbound = startBooking(session, language);
