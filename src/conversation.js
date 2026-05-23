@@ -46,10 +46,7 @@ const {
   isGlobalResetIntent,
   getGlobalResetRoute
 } = require("./globalIntents");
-const {
-  isGreetingReset,
-  tryGreetingResetBeforeBooking
-} = require("./greetingReset");
+const { runGlobalIntentGate, isGlobalIntent } = require("./messageRouter");
 const { getReturningGreeting } = require("./brand");
 const {
   detectEmotionalDistress,
@@ -281,61 +278,48 @@ async function handleIncomingMessage({
   openai,
   model,
   logger,
-  notifyAdmin
+  notifyAdmin,
+  skipGlobalGate = false
 }) {
   const incomingText = String(buttonText || text || "").trim();
   const session = getSession(userId);
-  clearEmotionalHoldIfExpired(session);
-
-  const language = normalizeLanguage(
-    resolveClientLanguage(incomingText, session.language, { isButton })
-  );
-  session.language = language;
 
   let pendingRoute = null;
+  let language = normalizeLanguage(session.language);
 
-  // ━━━ PRIORITY 0: приветствие — ДО waitingForTime / booking / FSM ━━━
-  if (!isButton && isGreetingReset(incomingText)) {
-    const greetingOutbound = tryGreetingResetBeforeBooking({
+  // ━━━ 1–3: normalize + global intent + reset (ДО language / booking / waitingFor*) ━━━
+  if (!skipGlobalGate) {
+    const gate = runGlobalIntentGate({
       chatId: userId,
       session,
       text: incomingText,
-      language
+      language,
+      isButton,
+      buttonId,
+      menuContext
     });
-    if (greetingOutbound) {
-      pushHistory(session, "user", incomingText);
-      pushHistory(session, "assistant", greetingOutbound.reply);
-      return finish(session, userId, greetingOutbound);
+
+    if (gate.handled) {
+      language = normalizeLanguage(
+        resolveClientLanguage(incomingText, session.language, { isButton })
+      );
+      session.language = language;
+      pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
+      pushHistory(session, "assistant", gate.outbound.reply);
+      if (gate.menuRoute) {
+        pendingRoute = gate.menuRoute;
+      } else {
+        return finish(session, userId, gate.outbound);
+      }
     }
   }
 
-  // ━━━ PRIORITY 1: глобальные intent'ы (ДО booking / concierge / waitingFor*) ━━━
-  if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
-    console.log("GLOBAL RESET TRIGGERED");
-    console.log("CURRENT FLOW:", session.currentFlow);
-    console.log("INCOMING:", incomingText);
+  clearEmotionalHoldIfExpired(session);
 
-    const menuRoute = isButton
-      ? getGlobalResetRoute(buttonId, incomingText, menuContext)
-      : null;
-
-    resetConversationState(session, userId);
-    session.booking = null;
-    session.concierge = null;
-
-    pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
-
-    if (menuRoute) {
-      pendingRoute = menuRoute;
-      logger.info("Global reset → route after menu", { userId, route: menuRoute });
-    } else {
-      const outbound = buildMainMenuWelcome(session, language, {
-        reason: "greeting_or_menu"
-      });
-      pushHistory(session, "assistant", outbound.reply);
-      return finish(session, userId, outbound);
-    }
-  }
+  language = normalizeLanguage(
+    resolveClientLanguage(incomingText, session.language, { isButton })
+  );
+  session.language = language;
 
   const deepLink = parseWebsiteDeepLink(incomingText);
   if (deepLink?.action) {
@@ -451,17 +435,6 @@ async function handleIncomingMessage({
   }
 
   if (!pendingRoute && isBookingFlowActive(session)) {
-    if (isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
-      console.log("GLOBAL RESET TRIGGERED (booking guard)");
-      resetConversationState(session, userId);
-      const outbound = buildMainMenuWelcome(session, language, {
-        reason: "greeting_or_menu"
-      });
-      pushHistory(session, "user", incomingText);
-      pushHistory(session, "assistant", outbound.reply);
-      return finish(session, userId, outbound);
-    }
-
     const result = processBookingSession(session, incomingText, language, {
       chatId: userId,
       buttonId,
@@ -591,7 +564,11 @@ async function handleIncomingMessage({
     }
 
     if (routeName === "booking") {
-      if (hasResumableBooking(session) && !isButton) {
+      if (
+        hasResumableBooking(session) &&
+        !isButton &&
+        !isGlobalIntent(incomingText, { isButton, buttonId, menuContext })
+      ) {
         session.currentFlow = "booking";
         const outbound = getResumeBookingOutbound(session, language);
         pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);

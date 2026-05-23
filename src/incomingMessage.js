@@ -3,7 +3,7 @@ const { isDuplicate } = require("./messageDedup");
 const { getSession, updateSession, saveSession } = require("./sessionStore");
 const { normalizeLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
-const { tryGreetingResetBeforeBooking } = require("./greetingReset");
+const { runGlobalIntentGate } = require("./messageRouter");
 const { enrichOutboundMessages, getMenuTextBlock } = require("./menus");
 const {
   parseIncomingMessage,
@@ -15,6 +15,36 @@ const {
 const MENU_DELAY_MS = Number(process.env.MENU_AFTER_REPLY_DELAY_MS || 700);
 const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
 const MENU_BUTTONS_AFTER = process.env.MENU_BUTTONS_AFTER !== "false";
+
+async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
+  const toSend = enrichOutboundMessages(
+    outbound.messages,
+    lang,
+    outbound.menuContext || "main"
+  );
+
+  if (toSend.length) {
+    await sendOutboundMessages({
+      config: waConfig,
+      to: userId,
+      messages: toSend,
+      logger
+    });
+  }
+
+  if (MENU_BUTTONS_AFTER && waConfig.provider === "green") {
+    if (toSend.length) {
+      await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
+    }
+    await tryInteractiveButtonsOnly({
+      config: waConfig,
+      to: userId,
+      language: lang,
+      menuContext: "main",
+      logger
+    });
+  }
+}
 
 async function processIncomingMessage({
   body,
@@ -48,46 +78,40 @@ async function processIncomingMessage({
     return;
   }
 
-  const sessionBefore = getSession(payload.userId);
+  const session = getSession(payload.userId);
+
+  // 1. Normalize text (до любой логики)
   const incomingText = String(payload.buttonText || payload.text || "").trim();
-  let lang = normalizeLanguage(sessionBefore.language);
+  let lang = normalizeLanguage(session.language);
 
   console.log("INCOMING TEXT:", incomingText);
 
-  if (!payload.isButton && incomingText) {
-    const greetingOutbound = tryGreetingResetBeforeBooking({
+  // 2–3. Global intent + reset + main menu (ДО handleIncomingMessage / booking)
+  if (!webhookTestReply && incomingText) {
+    const gate = runGlobalIntentGate({
       chatId: payload.userId,
-      session: sessionBefore,
+      session,
       text: incomingText,
-      language: lang
+      language: lang,
+      isButton: payload.isButton,
+      buttonId: payload.buttonId,
+      menuContext: session.menuContext || "main"
     });
-    if (greetingOutbound) {
-      const toSend = enrichOutboundMessages(
-        greetingOutbound.messages,
+
+    if (gate.handled) {
+      session.menuContext = "main";
+      saveSession(payload.userId, session, ["globalIntentGate"]);
+      await sendMainMenuReply({
+        waConfig,
+        userId: payload.userId,
         lang,
-        greetingOutbound.menuContext
-      );
-      if (toSend.length) {
-        await sendOutboundMessages({
-          config: waConfig,
-          to: payload.userId,
-          messages: toSend,
-          logger
-        });
-      }
-      if (MENU_BUTTONS_AFTER && waConfig.provider === "green") {
-        await new Promise((r) => setTimeout(r, MENU_DELAY_MS));
-        await tryInteractiveButtonsOnly({
-          config: waConfig,
-          to: payload.userId,
-          language: lang,
-          menuContext: "main",
-          logger
-        });
-      }
-      sessionBefore.menuContext = "main";
-      saveSession(payload.userId, sessionBefore, ["greetingResetEarly"]);
-      logger.info("Greeting reset (incomingMessage gate)", { userId: payload.userId });
+        outbound: gate.outbound,
+        logger
+      });
+      logger.info("Global intent gate (incomingMessage)", {
+        userId: payload.userId,
+        reason: gate.reason
+      });
       return;
     }
   }
@@ -112,11 +136,12 @@ async function processIncomingMessage({
       buttonId: payload.buttonId,
       buttonText: payload.buttonText,
       isButton: payload.isButton,
-      menuContext: sessionBefore.menuContext || "main",
+      menuContext: session.menuContext || "main",
       openai,
       model,
       logger,
-      notifyAdmin
+      notifyAdmin,
+      skipGlobalGate: true
     });
   }
 

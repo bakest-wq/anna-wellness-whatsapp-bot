@@ -24,7 +24,8 @@ const {
   getResumeStepLabel,
   getSessionSnapshotForLead
 } = require("./sessionMemory");
-const { isGreetingReset, tryGreetingResetBeforeBooking } = require("./greetingReset");
+const { isGlobalIntent } = require("./messageRouter");
+const { tryGreetingResetBeforeBooking } = require("./greetingReset");
 
 const STEPS = ["service", "day", "time", "name", "phone", "contraindications"];
 
@@ -171,7 +172,7 @@ function resolveServiceFromInput(session, text, options = {}) {
 function processBookingSession(session, text, language, options = {}) {
   const chatId = options.chatId || session.chatId;
 
-  if (isGreetingReset(text)) {
+  if (isGlobalIntent(text, options)) {
     console.log("GREETING RESET BEFORE BOOKING (processBookingSession)");
     const outbound = tryGreetingResetBeforeBooking({
       chatId,
@@ -249,16 +250,6 @@ function processBookingSession(session, text, language, options = {}) {
   }
 
   if (step === "time") {
-    if (isGreetingReset(text)) {
-      console.log("GREETING RESET BEFORE BOOKING (time step)");
-      const outbound = tryGreetingResetBeforeBooking({
-        chatId,
-        session,
-        text,
-        language
-      });
-      return { globalReset: true, reply: outbound?.reply, ...outbound };
-    }
     const timeCheck = isValidBookingTime(text);
     if (!timeCheck.ok) {
       return { reply: getScenarioResponse("invalid_time", lang), skipMenu: true };

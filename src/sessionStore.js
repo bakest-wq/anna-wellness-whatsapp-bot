@@ -121,6 +121,14 @@ function normalizeLegacySession(raw, chatId) {
   delete session.booking;
   delete session.concierge;
 
+  if (session.currentFlow !== "booking" && session.currentFlow !== "concierge") {
+    session.currentStep = null;
+    session.waitingForTime = false;
+    session.waitingForDate = false;
+    session.waitingForPhone = false;
+    session.pendingStep = null;
+  }
+
   return session;
 }
 
