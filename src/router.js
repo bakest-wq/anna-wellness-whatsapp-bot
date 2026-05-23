@@ -71,6 +71,11 @@ function getRouteReply(routeName, language) {
     case "session":
       return getScenarioResponse("session", language);
 
+    case "admin_contact": {
+      const { getAdminContactReply } = require("./emotionalRouting");
+      return getAdminContactReply(language);
+    }
+
     case "back":
       return getScenarioResponse("back", language);
 

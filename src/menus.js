@@ -39,6 +39,34 @@ const MAIN_MENU_TEXT = {
 Жай ғана санды жіберсеңіз болады 🤍`
 };
 
+const EMOTIONAL_LIGHT_MENU_TEXT = {
+  ru: `1️⃣ 🌸 Помочь подобрать практику
+2️⃣ 🌿 Подробнее о практиках
+3️⃣ 📅 Записаться
+4️⃣ 💰 Цены
+
+Можно просто отправить цифру 🤍`,
+  kz: `1️⃣ 🌸 Практика таңдауға көмектесу
+2️⃣ 🌿 Практикалар туралы
+3️⃣ 📅 Жазылу
+4️⃣ 💰 Бағалар
+
+Жай ғана санды жіберсеңіз болады 🤍`
+};
+
+const EMOTIONAL_HEAVY_MENU_TEXT = {
+  ru: `1️⃣ 🌿 Мягко подобрать практику
+2️⃣ 🤍 Просто узнать, как проходит сеанс
+3️⃣ 📞 Связаться с администратором
+
+Можно просто отправить цифру 🤍`,
+  kz: `1️⃣ 🌿 Жұмсақ практика таңдау
+2️⃣ 🤍 Сеанс қалай өтетінін білу
+3️⃣ 📞 Әкімшімен байланысу
+
+Жай ғана санды жіберсеңіз болады 🤍`
+};
+
 const ITEMS = {
   concierge: {
     id: "btn_concierge",
@@ -129,6 +157,26 @@ const ITEMS = {
     labelKz: "Артқа",
     descRu: "Главное меню",
     descKz: "Басты мәзір"
+  },
+  emotional_concierge: {
+    id: "btn_emotional_concierge",
+    route: "concierge",
+    ru: "🌿 Мягко подобрать практику",
+    kz: "🌿 Жұмсақ практика таңдау",
+    labelRu: "Мягко подобрать практику",
+    labelKz: "Жұмсақ практика таңдау",
+    descRu: "Бережный подбор",
+    descKz: "Абайлап таңдау"
+  },
+  admin_contact: {
+    id: "btn_admin_contact",
+    route: "admin_contact",
+    ru: "📞 Связаться с администратором",
+    kz: "📞 Әкімшімен байланысу",
+    labelRu: "Связаться с администратором",
+    labelKz: "Әкімшімен байланысу",
+    descRu: "Живой контакт",
+    descKz: "Тікелей байланыс"
   }
 };
 
@@ -187,7 +235,28 @@ const MENU_CONTEXTS = {
   default: {
     items: ["concierge", "booking", "price", "address", "contra", "practices"],
     maxChoice: 6
+  },
+  emotional_light: {
+    items: ["concierge", "practices", "booking", "price"],
+    maxChoice: 4
+  },
+  emotional_heavy: {
+    items: ["emotional_concierge", "session", "admin_contact"],
+    maxChoice: 3
   }
+};
+
+const EMOTIONAL_LIGHT_NUMERIC = {
+  1: "concierge",
+  2: "practices",
+  3: "booking",
+  4: "price"
+};
+
+const EMOTIONAL_HEAVY_NUMERIC = {
+  1: "concierge",
+  2: "session",
+  3: "admin_contact"
 };
 
 const MAIN_NUMERIC = {
@@ -232,6 +301,7 @@ const ROUTE_TO_MENU = {
   breathing_gaya_earthflow: "after_practices",
   five_continents: "after_practices",
   back: "main",
+  admin_contact: "main",
   concierge: "concierge_emotion",
   concierge_detail: "after_practice_detail",
   concierge_book: "main",
@@ -350,6 +420,14 @@ function getMenuTextBlock(language, context = "main") {
     return MAIN_MENU_TEXT[lang];
   }
 
+  if (context === "emotional_light") {
+    return EMOTIONAL_LIGHT_MENU_TEXT[lang];
+  }
+
+  if (context === "emotional_heavy") {
+    return EMOTIONAL_HEAVY_MENU_TEXT[lang];
+  }
+
   const items = getContextItems(context);
   const prefix = lang === "ru" ? "Что подсказать дальше:" : "Әрі не айтайын:";
   const lines = items
@@ -368,12 +446,19 @@ function isMainMenuContext(context) {
   return context === "main" || context === "default";
 }
 
+function isEmotionalMenuContext(context) {
+  return context === "emotional_light" || context === "emotional_heavy";
+}
+
 function messageAlreadyHasMenu(text) {
   if (!text) return false;
   return (
     /Что вам сейчас ближе|Қазір сізге не жақын/.test(text) ||
     /Можно просто отправить цифру 🤍|Жай ғана санды жіберсеңіз болады 🤍/.test(text) ||
-    (/[1-6]️⃣/.test(text) && /Помочь подобрать|Практика таңдау|Записаться|Жазылу/.test(text))
+    (/[1-6]️⃣/.test(text) && /Помочь подобрать|Практика таңдау|Записаться|Жазылу/.test(text)) ||
+    /Мягко подобрать практику|Жұмсақ практика таңдау|Связаться с администратором|Әкімшімен байланысу/.test(
+      text
+    )
   );
 }
 
@@ -442,6 +527,12 @@ LABEL_TO_ROUTE["практикалар туралы"] = "practices";
 LABEL_TO_ROUTE["қарсы көрсетілімдер"] = "contraindications";
 LABEL_TO_ROUTE["жазылу"] = "booking";
 LABEL_TO_ROUTE["мекенжай"] = "address";
+LABEL_TO_ROUTE["мягко подобрать практику"] = "concierge";
+LABEL_TO_ROUTE["жұмсақ практика таңдау"] = "concierge";
+LABEL_TO_ROUTE["связаться с администратором"] = "admin_contact";
+LABEL_TO_ROUTE["әкімшімен байланысу"] = "admin_contact";
+LABEL_TO_ROUTE["просто узнать, как проходит сеанс"] = "session";
+LABEL_TO_ROUTE["сеанс қалай өтетінін білу"] = "session";
 LABEL_TO_ROUTE["как проходит сеанс"] = "session";
 LABEL_TO_ROUTE["сеанс қалай"] = "session";
 registerPracticeLabels(LABEL_TO_ROUTE, normalizeLabel);
@@ -463,6 +554,14 @@ function parseNumericChoice(text, menuContext) {
   if (menuContext === "practices_picker" || menuContext === "booking_service") {
     if (n === 8) return "back";
     return PRACTICE_PICKER[n - 1]?.route || null;
+  }
+
+  if (menuContext === "emotional_light") {
+    return EMOTIONAL_LIGHT_NUMERIC[n] || null;
+  }
+
+  if (menuContext === "emotional_heavy") {
+    return EMOTIONAL_HEAVY_NUMERIC[n] || null;
   }
 
   if (menuContext === "main" || menuContext === "default") {
@@ -496,6 +595,12 @@ function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
       if (n === 8) return "back";
       return PRACTICE_PICKER[n - 1]?.route || null;
     }
+    if (menuContext === "emotional_light") {
+      return EMOTIONAL_LIGHT_NUMERIC[n] || null;
+    }
+    if (menuContext === "emotional_heavy") {
+      return EMOTIONAL_HEAVY_NUMERIC[n] || null;
+    }
     if (menuContext === "main" || menuContext === "default") {
       return MAIN_NUMERIC[n] || null;
     }
@@ -510,8 +615,12 @@ module.exports = {
   ITEMS,
   MENU_CONTEXTS,
   MAIN_MENU_TEXT,
+  EMOTIONAL_LIGHT_MENU_TEXT,
+  EMOTIONAL_HEAVY_MENU_TEXT,
   ID_TO_ROUTE,
   MAIN_NUMERIC,
+  EMOTIONAL_LIGHT_NUMERIC,
+  EMOTIONAL_HEAVY_NUMERIC,
   getMenuContextForRoute,
   buildMenuBlock,
   getMenuTextBlock,
@@ -521,5 +630,6 @@ module.exports = {
   resolveMenuAction,
   getContextItems,
   isMainMenuContext,
+  isEmotionalMenuContext,
   messageAlreadyHasMenu
 };

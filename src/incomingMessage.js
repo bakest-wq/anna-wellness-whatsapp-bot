@@ -4,7 +4,12 @@ const { getSession, updateSession, saveSession } = require("./sessionStore");
 const { normalizeLanguage } = require("./language");
 const { handleIncomingMessage } = require("./conversation");
 const { runGlobalIntentGate } = require("./messageRouter");
-const { enrichOutboundMessages, getMenuTextBlock, isMainMenuContext } = require("./menus");
+const {
+  enrichOutboundMessages,
+  getMenuTextBlock,
+  isMainMenuContext,
+  isEmotionalMenuContext
+} = require("./menus");
 const {
   parseIncomingMessage,
   sendWhatsApp,
@@ -18,7 +23,7 @@ const MENU_BUTTONS_AFTER =
   process.env.MENU_BUTTONS_AFTER === "true" || process.env.MENU_BUTTONS_AFTER === "1";
 
 function shouldSendInteractiveButtons(menuContext) {
-  if (isMainMenuContext(menuContext)) return false;
+  if (isMainMenuContext(menuContext) || isEmotionalMenuContext(menuContext)) return false;
   return MENU_BUTTONS_AFTER;
 }
 
