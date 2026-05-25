@@ -75,19 +75,35 @@ function getBookingStartOutbound(language) {
   };
 }
 
-function getBookingAfterPreselectOutbound(session, language) {
+function getRecommendationBookingDayQuestion(language) {
+  const lang = language === "kz" ? "kz" : "ru";
+  return lang === "kz"
+    ? "🌿 Қай күні келу сізге жайлы болар еді?\n\nМысалы: бүгін, ертең, арғы күні немесе күн."
+    : "🌿 Когда вам было бы комфортно прийти?\n\nМожно написать: сегодня, завтра, послезавтра или дату.";
+}
+
+function getBookingAfterPreselectOutbound(session, language, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
   const title = session.selectedPracticeTitle || "";
   const fromSite = session.source === "sakinawellness.kz";
-  const intro = fromSite
+  const fromRecommendation = options.fromRecommendation === true;
+  const intro = fromRecommendation
     ? lang === "kz"
-      ? `Керемет 🤍\n${title} бойынша жазылуды жалғастырамыз.\n\n`
-      : `С удовольствием 🤍\nЗапись на ${title}.\n\n`
-    : lang === "kz"
-      ? `Керемет таңдау 🤍\n${title}\n\n`
-      : `Прекрасный выбор 🤍\n${title}\n\n`;
+      ? `Керемет 🤍\n${title} бойынша жұмсақ жазылуды бастаймыз.\n\n`
+      : `С удовольствием 🤍\nМягко оформим запись на ${title}.\n\n`
+    : fromSite
+      ? lang === "kz"
+        ? `Керемет 🤍\n${title} бойынша жазылуды жалғастырамыз.\n\n`
+        : `С удовольствием 🤍\nЗапись на ${title}.\n\n`
+      : lang === "kz"
+        ? `Керемет таңдау 🤍\n${title}\n\n`
+        : `Прекрасный выбор 🤍\n${title}\n\n`;
   syncCurrentStep(session);
-  const text = intro + questionForStep(session.currentStep, session, language);
+  const dayQ =
+    fromRecommendation && session.currentStep === "day"
+      ? getRecommendationBookingDayQuestion(language)
+      : questionForStep(session.currentStep, session, language);
+  const text = intro + dayQ;
   return {
     reply: text,
     messages: [{ type: "text", text }],
@@ -415,6 +431,7 @@ module.exports = {
   buildLead,
   getBookingStartOutbound,
   getBookingAfterPreselectOutbound,
+  getRecommendationBookingDayQuestion,
   getBookingAfterPackageOutbound,
   getResumeBookingOutbound,
   questionForStep,

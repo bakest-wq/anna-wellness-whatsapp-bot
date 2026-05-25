@@ -99,8 +99,27 @@ function isInterruptIntent(intent, confidence = 0) {
   return confidence >= 0.3;
 }
 
-function isMainMenuNavigation(routeName, menuContext) {
+function isMainMenuNavigation(routeName, menuContext, session = null) {
   if (!routeName || routeName === "back") return false;
+  if (session?.recommendationFlow === true) {
+    if (
+      routeName === "concierge_detail" ||
+      routeName === "concierge_book" ||
+      routeName === "concierge_other"
+    ) {
+      return false;
+    }
+    if (/^__intent_/.test(routeName)) return false;
+  }
+  if (menuContext === "recommendation_card") {
+    if (
+      routeName === "concierge_detail" ||
+      routeName === "concierge_book" ||
+      routeName === "concierge_other"
+    ) {
+      return false;
+    }
+  }
   if (MAIN_MENU_ROUTES.has(routeName)) return true;
   if (String(routeName).startsWith("practice_")) return true;
   if (BOOKING_MENU_CONTEXTS.has(menuContext) && routeName === "booking") return false;
@@ -189,7 +208,7 @@ function looksLikeConciergeStepInput(text, concierge, options = {}) {
   const raw = normalizeText(text);
   if (/^[1-9][️⃣]?\s*$/u.test(raw)) return true;
   if (concierge.step === "result") {
-    return /^(подробнее|записаться|другие|толығырақ|жазыл)/i.test(raw);
+    return /^(подробнее|узнать|записаться|мягко|другой|другие|толығырақ|жазыл|басқа)/i.test(raw);
   }
   return raw.length >= 2 && raw.length <= 120;
 }
@@ -215,7 +234,7 @@ function evaluateActiveFlow(session, incomingText, language, options = {}) {
     return { mode: "cancel" };
   }
 
-  if (isMainMenuNavigation(routeName, menuContext)) {
+  if (isMainMenuNavigation(routeName, menuContext, session)) {
     return { mode: "soft_reset", route: routeName, reason: "main_menu" };
   }
 

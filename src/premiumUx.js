@@ -164,12 +164,12 @@ const EMPATHY = {
 };
 
 const RECOMMEND_ACTIONS = {
-  ru: `1️⃣ Подробнее
-2️⃣ Записаться
-3️⃣ Другой вариант`,
-  kz: `1️⃣ Толығырақ
-2️⃣ Жазылу
-3️⃣ Басқа нұсқа`
+  ru: `1️⃣ Узнать подробнее
+2️⃣ Мягко записаться
+3️⃣ Посмотреть другой вариант`,
+  kz: `1️⃣ Толығырақ білу
+2️⃣ Жұмсақ жазылу
+3️⃣ Басқа нұсқаны көру`
 };
 
 function langKey(language) {
@@ -362,6 +362,7 @@ function persistPremiumRecommendation(session, language, routingIntent) {
   const { primary, alt } = recommendByRoutingIntent(routingIntent);
   session.emotionalState = emotionId;
   session.recommendedPractice = primary;
+  session.recommendationFlow = true;
   session.lastPracticeId = primary;
   session.lastEmotionalIntent = routingIntent;
   session.currentFlow = "concierge";

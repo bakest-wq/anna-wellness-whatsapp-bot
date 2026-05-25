@@ -30,7 +30,7 @@ if (
   !ru ||
   !/Понимаю/.test(ru.outbound.reply) ||
   !/EarthFlow|5 континент/i.test(ru.outbound.reply) ||
-  !/Подробнее/.test(ru.outbound.reply) ||
+  !/Подробнее|Узнать подробнее/.test(ru.outbound.reply) ||
   /Выберите.*практику/i.test(ru.outbound.reply)
 ) {
   console.error("FAIL ru outbound", ru?.outbound?.reply?.slice(0, 200));

@@ -88,6 +88,7 @@ function clearConciergeFields(session) {
 function softResetFlow(session) {
   session.currentFlow = null;
   session.currentStep = null;
+  session.recommendationFlow = false;
   session.menuContext = "main";
   session.emotionalHold = false;
   session.emotionalHoldUntil = null;

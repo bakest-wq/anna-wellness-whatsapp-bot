@@ -66,7 +66,8 @@ function createDefaultSession(chatId) {
     menuContext: "main",
     emotionalHold: false,
     emotionalHoldUntil: null,
-    lastPracticeId: null
+    lastPracticeId: null,
+    recommendationFlow: false
   };
 }
 

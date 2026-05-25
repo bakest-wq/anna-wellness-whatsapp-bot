@@ -74,6 +74,7 @@ const {
   getAfterBookingMessage,
   resolveEmotionalSelectionRoute
 } = require("./premiumUx");
+const { tryRecommendationAction, clearRecommendationFlow } = require("./recommendationActions");
 
 const SCENARIO_INTENTS = [
   "greeting",
@@ -178,7 +179,20 @@ function wrapBookingResult(result, session, language) {
   return bookingOutbound(result.reply, { skipMenu: true, menuContext: "main" });
 }
 
+function startBookingFromRecommendation(session, language, practiceId) {
+  clearRecommendationFlow(session);
+  clearConciergeFields(session);
+  session.concierge = null;
+  return startBooking(session, language, practiceId, {
+    forceNew: true,
+    fromRecommendation: true
+  });
+}
+
 function startBooking(session, language, preselectedPracticeId = null, options = {}) {
+  if (options.fromRecommendation) {
+    clearRecommendationFlow(session);
+  }
   clearConciergeFields(session);
   session.concierge = null;
 
@@ -208,7 +222,9 @@ function startBooking(session, language, preselectedPracticeId = null, options =
     return getBookingAfterPackageOutbound(session, language, options.packageName);
   }
   if (preselectedPracticeId) {
-    return getBookingAfterPreselectOutbound(session, language);
+    return getBookingAfterPreselectOutbound(session, language, {
+      fromRecommendation: options.fromRecommendation === true
+    });
   }
   return getBookingStartOutbound(language);
 }
@@ -451,12 +467,30 @@ async function handleIncomingMessageCore({
     });
   }
 
+  // ━━━ Рекомендация: 1 подробнее · 2 запись · 3 другой вариант ━━━
+  if (!pendingRoute) {
+    const recAction = tryRecommendationAction(
+      session,
+      incomingText,
+      language,
+      activeMenuContext,
+      { buttonId, isButton },
+      { startBookingFromRecommendation }
+    );
+    if (recAction) {
+      pushHistory(session, "user", isButton ? `[рекомендация] ${incomingText}` : incomingText);
+      pushHistory(session, "assistant", recAction.reply || "");
+      return finish(session, userId, recAction);
+    }
+  }
+
   // ━━━ PRIORITY 2: активный flow — только если не глобальный сброс ━━━
   syncLegacyMirrors(session);
 
   if (
     !pendingRoute &&
-    (isBookingFlowActive(session) || isConciergeFlowActive(session))
+    (isBookingFlowActive(session) || isConciergeFlowActive(session)) &&
+    !session.recommendationFlow
   ) {
     const routeForEval = routeIncomingText(incomingText, buttonId, menuContext);
     const flowEval = evaluateActiveFlow(session, incomingText, language, {
