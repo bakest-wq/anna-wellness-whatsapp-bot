@@ -4,18 +4,25 @@ function buildNumberedMenu(items, language, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
   const labelKey = lang === "kz" ? "labelKz" : "labelRu";
   const lines = items.map((item, i) => `${i + 1}️⃣ ${item[labelKey]}`).join("\n");
-  const footer =
-    options.footer ||
-    (lang === "kz" ? "Санды жіберіңіз 🌿" : "Можно просто отправить цифру 🌿");
+  const footer = options.noFooter
+    ? ""
+    : options.footer ||
+      (lang === "kz" ? "" : "");
   const backLabel = lang === "kz" ? "Артқа" : "Назад";
   const withBack = options.withBack
     ? `\n${items.length + 1}️⃣ ${backLabel}`
     : "";
-  return `${lines}${withBack}\n\n${footer}`;
+  if (footer) return `${lines}${withBack}\n\n${footer}`;
+  return `${lines}${withBack}`.trim();
 }
 
 function getConciergeEmotionMenu(language) {
-  return buildNumberedMenu(EMOTIONS, language, { withBack: true });
+  const lang = language === "kz" ? "kz" : "ru";
+  const header =
+    lang === "kz"
+      ? "Қай күй жақын сезіледі? 🌿\n\n"
+      : "Что сейчас ощущается ближе? 🌿\n\n";
+  return header + buildNumberedMenu(EMOTIONS, language, { withBack: true, noFooter: true });
 }
 
 function getConciergeOutcomeMenu(language) {

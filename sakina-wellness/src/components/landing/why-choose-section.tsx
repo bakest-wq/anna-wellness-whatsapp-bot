@@ -9,6 +9,8 @@ import {
   Shield,
   Sparkles,
 } from "lucide-react";
+import Image from "next/image";
+import { ANNA_ALT, ANNA_PHOTOS } from "@/lib/anna-photos";
 import { FadeUp, staggerContainer, easeLuxury } from "./motion";
 
 const PRACTICE_HIGHLIGHTS = [
@@ -173,15 +175,18 @@ function AnnaStoryBlock() {
         aria-hidden
       />
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
-        <div
-          className="why-choose-anna__initial font-display flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[#C4A574]/30 bg-[#FFF9F3] text-[1.35rem] text-[#B8935A] sm:h-16 sm:w-16 sm:text-[1.5rem]"
-          aria-hidden
-        >
-          А
-        </div>
+        <figure className="why-choose-anna__photo anna-figure anna-figure--thumb shrink-0">
+          <Image
+            src={ANNA_PHOTOS.portrait}
+            alt={ANNA_ALT.portrait}
+            fill
+            sizes="80px"
+            className="anna-figure__img anna-figure__img--portrait"
+          />
+        </figure>
         <div className="min-w-0">
           <p className="text-gold text-[10px] font-semibold uppercase tracking-[0.28em]">
-            О практике
+            С вами лично
           </p>
           <h3 className="font-display text-heading mt-2 text-[1.35rem] leading-snug sm:text-[1.45rem]">
             Анна Абдулрашидовна
@@ -190,11 +195,16 @@ function AnnaStoryBlock() {
             wellness-практик
           </p>
           <p className="text-muted mt-5 text-[15px] font-light leading-[1.8] sm:text-[16px]">
-            Анна Абдулрашидовна — wellness-практик с более чем 3-летним опытом
-            работы. За это время через практики Sakina Wellness прошли около
-            1000 женщин. Главная цель — помочь женщине почувствовать лёгкость в
-            теле, спокойствие внутри и состояние восстановления.
+            Каждый сеанс веду сама: с вниманием к вашему телу, дыханию и
+            состоянию. Около 1000 женщин уже нашли здесь спокойствие и
+            восстановление.
           </p>
+          <a
+            href="#about"
+            className="text-gold mt-4 inline-block text-[13px] font-medium tracking-wide underline-offset-4 hover:underline"
+          >
+            Узнать больше об Анне
+          </a>
         </div>
       </div>
     </motion.article>

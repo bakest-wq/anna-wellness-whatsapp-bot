@@ -90,7 +90,7 @@ export default function RootLayout({
       lang="ru"
       className={`${displaySerif.variable} ${sansUi.variable} ${scriptAccent.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-[#FAF7F2] text-[#3D3830] [-webkit-font-smoothing:antialiased] [text-rendering:optimizeLegibility]">
+      <body className="min-h-full bg-[#FAF7F2] text-[#3D3830] antialiased [text-rendering:optimizeLegibility]">
         {children}
       </body>
     </html>

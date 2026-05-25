@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ChevronLeft, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, ChevronLeft, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { OnboardingProgress } from "@/components/landing/onboarding/shared";
 import {
@@ -207,26 +207,26 @@ export function OnboardingBookingFlow() {
   const isLastStep = step === ONBOARDING_STEP_COUNT - 1;
 
   return (
-    <section id="booking" className="onboarding-section luxury-section">
-      <div className="onboarding-ambient" aria-hidden />
+    <section
+      id="booking"
+      className="onboarding-section sw-booking relative z-10 scroll-mt-24"
+    >
       <div className="onboarding-container">
-        <FadeUp className="onboarding-intro">
-          <p className="onboarding-intro__eyebrow">
-            <Sparkles className="inline h-3.5 w-3.5 opacity-70" strokeWidth={1.5} />
-            <span>Путь к восстановлению</span>
-          </p>
-          <h2 className="onboarding-intro__title">Запись в Sakina Wellness</h2>
-          <p className="onboarding-intro__hint">
-            Несколько тихих шагов — мы услышим, что вам сейчас нужно, и подберём
-            практику.
+        <FadeUp className="onboarding-intro onboarding-intro--embedded">
+          <p className="onboarding-intro__eyebrow sw-eyebrow">Запись</p>
+          <h2 className="onboarding-intro__title sw-title" style={{ fontSize: "clamp(1.5rem, 4vw, 1.85rem)", marginTop: "0.5rem" }}>
+            Выберите сеанс и время
+          </h2>
+          <p className="onboarding-intro__hint sw-lead" style={{ marginTop: "0.75rem" }}>
+            Несколько спокойных шагов — Анна подберёт практику под ваше состояние.
           </p>
           <a
             href={buildWhatsAppConciergeUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="onboarding-intro__wa-link mt-5 inline-flex text-[14px] font-medium text-[#5F735B] underline-offset-4 hover:underline"
+            className="onboarding-intro__wa-link mt-5 inline-flex text-[14px] font-medium text-[#7a7368] underline-offset-4 hover:underline"
           >
-            🌿 Или подобрать практику в WhatsApp
+            Написать в WhatsApp
           </a>
         </FadeUp>
 

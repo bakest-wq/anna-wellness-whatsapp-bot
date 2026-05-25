@@ -59,12 +59,14 @@ function findByButtonOrIndex(list, text, buttonId, backIndex) {
 
 function startConciergeOutbound(language) {
   const text = getEmotionQuestion(language);
+  const { getConciergeEmotionMenu } = require("./conciergeMenus");
+  const menu = getConciergeEmotionMenu(language);
+  const full = `${text}\n\n${menu}`;
   return {
-    reply: text,
-    messages: [{ type: "text", text }],
-    skipMenu: false,
-    menuContext: "concierge_emotion",
-    conciergeTyping: true
+    reply: full,
+    messages: [{ type: "text", text: full }],
+    skipMenu: true,
+    menuContext: "concierge_emotion"
   };
 }
 
@@ -140,17 +142,42 @@ function processConciergeMessage(session, text, language, options = {}) {
     }
 
     concierge.emotion = emotionId;
-    concierge.step = "outcome";
+    const defaultOutcome = {
+      fatigue: "recovery",
+      anxiety: "calm",
+      body_tension: "body_lightness",
+      no_energy: "recharge",
+      emotional_exhaustion: "deep_relax",
+      want_relax: "deep_relax",
+      want_peace: "calm"
+    }[emotionId] || "deep_relax";
+
+    concierge.outcome = defaultOutcome;
+    const match = recommendPractice(concierge.emotion, defaultOutcome);
+    concierge.practiceId = match.practiceId;
+    concierge.alternatives = match.alternatives;
+    concierge.step = "result";
     persistConciergeToSession(session, concierge);
-    const reply = `${getEmotionTransition(lang)}\n\n${getOutcomeQuestion(lang)}`;
+
+    const { buildPremiumRecommendationMessage } = require("../premiumUx");
+    const routingIntent =
+      session.lastEmotionalIntent ||
+      (emotionId === "want_relax"
+        ? "need_relaxation"
+        : emotionId === "want_peace"
+          ? "need_calm"
+          : emotionId);
+    const reply = buildPremiumRecommendationMessage(lang, routingIntent, {
+      skipEmpathy: true
+    });
+
     return {
       handled: true,
       outbound: {
         reply,
         messages: [{ type: "text", text: reply }],
-        skipMenu: false,
-        menuContext: "concierge_outcome",
-        conciergeTyping: true
+        skipMenu: true,
+        menuContext: "recommendation_card"
       }
     };
   }
@@ -187,15 +214,18 @@ function processConciergeMessage(session, text, language, options = {}) {
     concierge.step = "result";
     persistConciergeToSession(session, concierge);
 
-    const reply = `${getMatchingTransition(lang)}\n\n${buildRecommendationCard(lang, match.practiceId)}`;
+    const { buildPremiumRecommendationMessage } = require("../premiumUx");
+    const routingIntent = session.lastEmotionalIntent || concierge.emotion;
+    const reply = buildPremiumRecommendationMessage(lang, routingIntent, {
+      skipEmpathy: true
+    });
     return {
       handled: true,
       outbound: {
         reply,
         messages: [{ type: "text", text: reply }],
-        skipMenu: false,
-        menuContext: "concierge_card",
-        conciergeTyping: true
+        skipMenu: true,
+        menuContext: "recommendation_card"
       }
     };
   }
@@ -217,8 +247,9 @@ function processConciergeMessage(session, text, language, options = {}) {
     }
 
     if (actionId === "other" || options.buttonId === "btn_concierge_other") {
-      session.concierge = null;
-      return { handled: true, action: "other_practices" };
+      const { buildAlternativeRecommendationOutbound } = require("../premiumUx");
+      const outbound = buildAlternativeRecommendationOutbound(session, lang);
+      return { handled: true, outbound };
     }
 
     if (/^[1-3]$/.test(String(text).trim()) || /^[1-3][️⃣]?$/u.test(String(text).trim())) {

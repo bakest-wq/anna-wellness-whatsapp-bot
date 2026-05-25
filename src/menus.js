@@ -16,52 +16,15 @@ const {
 } = require("./concierge/conciergeMenus");
 
 /** Premium главное меню — только текст (fallback), без смешения языков */
+const { getCompactMainMenu } = require("./premiumUx");
+
 const MAIN_MENU_TEXT = {
-  ru: `🌿 Чем помочь сейчас?
-
-1️⃣ 🌸 Подобрать практику по состоянию
-2️⃣ 📅 Записаться на сеанс
-3️⃣ 💰 Посмотреть цены
-4️⃣ 📍 Адрес и как добраться
-
-Можно отправить цифру или написать своими словами 🤍`,
-  kz: `🌿 Қазір қалай көмектесейін?
-
-1️⃣ 🌸 Күйіңізге сай практика таңдау
-2️⃣ 📅 Сеансқа жазылу
-3️⃣ 💰 Бағаларды көру
-4️⃣ 📍 Мекенжай және жол
-
-Санды жіберуге немесе өз сөзіңізбен жазуға болады 🤍`
+  ru: getCompactMainMenu("ru"),
+  kz: getCompactMainMenu("kz")
 };
 
-const EMOTIONAL_LIGHT_MENU_TEXT = {
-  ru: `1️⃣ 🌸 Помочь подобрать практику
-2️⃣ 🌿 Подробнее о практиках
-3️⃣ 📅 Записаться
-4️⃣ 💰 Цены
-
-Можно просто отправить цифру 🤍`,
-  kz: `1️⃣ 🌸 Практика таңдауға көмектесу
-2️⃣ 🌿 Практикалар туралы
-3️⃣ 📅 Жазылу
-4️⃣ 💰 Бағалар
-
-Жай ғана санды жіберсеңіз болады 🤍`
-};
-
-const EMOTIONAL_HEAVY_MENU_TEXT = {
-  ru: `1️⃣ 🌿 Мягко подобрать практику
-2️⃣ 🤍 Просто узнать, как проходит сеанс
-3️⃣ 📞 Связаться с администратором
-
-Можно просто отправить цифру 🤍`,
-  kz: `1️⃣ 🌿 Жұмсақ практика таңдау
-2️⃣ 🤍 Сеанс қалай өтетінін білу
-3️⃣ 📞 Әкімшімен байланысу
-
-Жай ғана санды жіберсеңіз болады 🤍`
-};
+const EMOTIONAL_LIGHT_MENU_TEXT = { ru: "", kz: "" };
+const EMOTIONAL_HEAVY_MENU_TEXT = { ru: "", kz: "" };
 
 const ITEMS = {
   concierge: {
@@ -239,6 +202,18 @@ const MENU_CONTEXTS = {
   emotional_heavy: {
     items: ["emotional_concierge", "session", "admin_contact"],
     maxChoice: 3
+  },
+  welcome_feeling: {
+    type: "welcome_feeling",
+    maxChoice: 4
+  },
+  recommendation_card: {
+    type: "recommendation_card",
+    maxChoice: 3
+  },
+  after_booking: {
+    items: ["concierge", "address", "price"],
+    maxChoice: 3
   }
 };
 
@@ -253,6 +228,25 @@ const EMOTIONAL_HEAVY_NUMERIC = {
   1: "concierge",
   2: "session",
   3: "admin_contact"
+};
+
+const WELCOME_FEELING_NUMERIC = {
+  1: "__intent_fatigue__",
+  2: "__intent_anxiety__",
+  3: "__intent_need_relaxation__",
+  4: "concierge"
+};
+
+const RECOMMENDATION_CARD_NUMERIC = {
+  1: "concierge_detail",
+  2: "concierge_book",
+  3: "concierge_other"
+};
+
+const AFTER_BOOKING_NUMERIC = {
+  1: "concierge",
+  2: "address",
+  3: "price"
 };
 
 const MAIN_NUMERIC = {
@@ -425,14 +419,28 @@ function getMenuTextBlock(language, context = "main") {
     return EMOTIONAL_HEAVY_MENU_TEXT[lang];
   }
 
+  if (context === "welcome_feeling") {
+    const { getWelcomeFeelingMenu } = require("./premiumUx");
+    return getWelcomeFeelingMenu(lang);
+  }
+
+  if (context === "recommendation_card") {
+    const { RECOMMEND_ACTIONS } = require("./premiumUx");
+    return RECOMMEND_ACTIONS[lang] || RECOMMEND_ACTIONS.ru;
+  }
+
+  if (context === "after_booking") {
+    const { getAfterBookingActions } = require("./premiumUx");
+    return getAfterBookingActions(lang);
+  }
+
   const items = getContextItems(context);
-  const prefix = lang === "ru" ? "Что подсказать дальше:" : "Әрі не айтайын:";
+  const prefix = lang === "ru" ? "Если захотите:" : "Қалағанда:";
   const lines = items
     .map((item, i) => `${i + 1}️⃣ ${item[lang === "kz" ? "labelKz" : "labelRu"]}`)
     .join("\n");
-  const footer = lang === "ru" ? "Можно отправить цифру 🌿" : "Санды жіберіңіз 🌿";
 
-  return `${prefix}\n\n${lines}\n\n${footer}`;
+  return `${prefix}\n\n${lines}`;
 }
 
 function getTextMenuFallback(language, context = "main") {
@@ -444,7 +452,13 @@ function isMainMenuContext(context) {
 }
 
 function isEmotionalMenuContext(context) {
-  return context === "emotional_light" || context === "emotional_heavy";
+  return (
+    context === "emotional_light" ||
+    context === "emotional_heavy" ||
+    context === "welcome_feeling" ||
+    context === "recommendation_card" ||
+    context === "after_booking"
+  );
 }
 
 function messageAlreadyHasMenu(text) {
@@ -466,7 +480,14 @@ function appendMenuToReply(reply, language, context = "main") {
   return `${String(reply).trim()}\n\n${menu}`;
 }
 
-function enrichOutboundMessages(messages, language, context = "main") {
+function enrichOutboundMessages(messages, language, context = "main", options = {}) {
+  const { shouldAutoAppendMenu } = require("./premiumUx");
+  const skipMenu = options.skipMenu === true;
+
+  if (!shouldAutoAppendMenu(context, skipMenu)) {
+    return messages?.length ? messages : [];
+  }
+
   if (!messages?.length) {
     return [{ type: "text", text: getMenuTextBlock(language, context) }];
   }
@@ -573,6 +594,18 @@ function parseNumericChoice(text, menuContext) {
     return EMOTIONAL_HEAVY_NUMERIC[n] || null;
   }
 
+  if (menuContext === "welcome_feeling") {
+    return WELCOME_FEELING_NUMERIC[n] || null;
+  }
+
+  if (menuContext === "recommendation_card") {
+    return RECOMMENDATION_CARD_NUMERIC[n] || null;
+  }
+
+  if (menuContext === "after_booking") {
+    return AFTER_BOOKING_NUMERIC[n] || null;
+  }
+
   if (menuContext === "main" || menuContext === "default") {
     return MAIN_NUMERIC[n] || null;
   }
@@ -609,6 +642,15 @@ function resolveMenuAction(buttonId, buttonText, menuContext = "main") {
     }
     if (menuContext === "emotional_heavy") {
       return EMOTIONAL_HEAVY_NUMERIC[n] || null;
+    }
+    if (menuContext === "welcome_feeling") {
+      return WELCOME_FEELING_NUMERIC[n] || null;
+    }
+    if (menuContext === "recommendation_card") {
+      return RECOMMENDATION_CARD_NUMERIC[n] || null;
+    }
+    if (menuContext === "after_booking") {
+      return AFTER_BOOKING_NUMERIC[n] || null;
     }
     if (menuContext === "main" || menuContext === "default") {
       return MAIN_NUMERIC[n] || null;

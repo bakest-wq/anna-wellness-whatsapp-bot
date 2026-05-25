@@ -125,7 +125,8 @@ function wrapOutbound(routeReply, routeName, language, options = {}) {
   return {
     reply: replyText,
     messages: [{ type: "text", text: replyText }],
-    menuContext
+    menuContext,
+    skipMenu: options.skipMenu === true
   };
 }
 

@@ -10,7 +10,7 @@ export function StickyWhatsAppCta() {
   const href = selectionLabel ? bookingUrl : conciergeUrl;
   const label = selectionLabel
     ? "Подтвердить в WhatsApp"
-    : "🌿 Подобрать практику";
+    : "Написать в WhatsApp";
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 md:hidden">
@@ -24,7 +24,7 @@ export function StickyWhatsAppCta() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           whileTap={{ scale: 0.99 }}
-          className="luxury-cta btn-gold flex min-h-[50px] w-full flex-col items-center justify-center gap-0.5 rounded-[1.15rem] px-4"
+          className="sw-btn flex min-h-[50px] w-full flex-col items-center justify-center gap-0.5 rounded-full px-4"
         >
           <span className="flex items-center gap-2 text-[14px] font-semibold tracking-[0.02em]">
             <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={1.75} />

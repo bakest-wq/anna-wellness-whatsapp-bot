@@ -23,7 +23,7 @@ const {
   completeBookingFlow,
   clearConciergeFields
 } = require("./sessionMemory");
-const { parseWebsiteDeepLink } = require("./deepLinks");
+const { parseWebsiteDeepLink, isSiteDeepLinkMessage } = require("./deepLinks");
 const BOT_ID_TO_ROUTE = {
   five: "practice_five",
   five_fire: "practice_five_fire",
@@ -62,6 +62,12 @@ const {
 } = require("./emotionalSupport");
 const { tryEmotionalRouting } = require("./emotionalRouting");
 const { isEmotionalMenuContext } = require("./menus");
+const {
+  getPremiumWelcomeMessage,
+  buildPremiumRecommendationOutbound,
+  buildAlternativeRecommendationOutbound,
+  getAfterBookingMessage
+} = require("./premiumUx");
 
 const SCENARIO_INTENTS = [
   "greeting",
@@ -101,11 +107,12 @@ function finish(session, userId, outbound) {
 }
 
 function emotionalOutbound(incomingText, language, session) {
-  const routed = tryEmotionalRouting(incomingText, language, { isButton: false });
+  const routed = tryEmotionalRouting(incomingText, language, session, {
+    isButton: false
+  });
   if (routed) {
     session.menuContext = routed.menuContext;
     session.lastEmotionalIntent = routed.intent;
-    session.emotionalState = routed.intent;
     markEmotionalHold(session);
     return routed.outbound;
   }
@@ -114,7 +121,7 @@ function emotionalOutbound(incomingText, language, session) {
     reply: incomingText,
     messages: [{ type: "text", text: "🤍" }],
     menuContext: "main",
-    skipMenu: false
+    skipMenu: true
   };
 }
 
@@ -135,9 +142,18 @@ function bookingOutbound(reply, options = {}) {
   };
 }
 
-function wrapBookingResult(result, session) {
-  if (result.cancelled || result.done) {
-    return bookingOutbound(result.reply, { skipMenu: false, menuContext: "main" });
+function wrapBookingResult(result, session, language) {
+  if (result.done) {
+    const reply = getAfterBookingMessage(language);
+    return {
+      reply,
+      messages: [{ type: "text", text: reply }],
+      menuContext: "after_booking",
+      skipMenu: true
+    };
+  }
+  if (result.cancelled) {
+    return bookingOutbound(result.reply, { skipMenu: true, menuContext: "main" });
   }
 
   if (
@@ -190,24 +206,47 @@ function startBooking(session, language, preselectedPracticeId = null, options =
 
 function handleDeepLink(session, userId, deep, language, incomingText, isButton) {
   const userLabel = isButton ? `[сайт] ${incomingText}` : incomingText;
+  session.source = "sakinawellness.kz";
+  session.menuContext = deep.action === "booking" ? "main" : session.menuContext;
+
+  const siteBookingOpts = {
+    forceNew: true,
+    source: "sakinawellness.kz"
+  };
 
   switch (deep.action) {
     case "concierge": {
+      hardResetFlow(session);
+      session.booking = null;
       const outbound = startConcierge(session, language);
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply);
       return finish(session, userId, outbound);
     }
     case "booking": {
-      const outbound = startBooking(session, language, deep.practiceId || null);
+      hardResetFlow(session);
+      session.concierge = null;
+      const outbound = startBooking(
+        session,
+        language,
+        deep.practiceId || null,
+        siteBookingOpts
+      );
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply);
       return finish(session, userId, outbound);
     }
     case "package_booking": {
+      hardResetFlow(session);
+      session.concierge = null;
       const outbound = startBooking(session, language, null, {
-        packageName: deep.packageName
+        ...siteBookingOpts,
+        packageName: deep.packageName,
+        packageId: deep.packageId
       });
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply);
       return finish(session, userId, outbound);
@@ -215,20 +254,28 @@ function handleDeepLink(session, userId, deep, language, incomingText, isButton)
     case "practice_detail": {
       const route = deep.route || BOT_ID_TO_ROUTE[deep.practiceId];
       if (!route) break;
+      session.lastPracticeId = deep.practiceId;
       const routeReply = getRouteReply(route, language);
-      const outbound = wrapOutbound(routeReply, route, language);
+      const outbound = wrapOutbound(routeReply, route, language, { skipMenu: true });
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply || "");
       return finish(session, userId, outbound);
     }
     case "price": {
-      const outbound = wrapOutbound(getRouteReply("price", language), "price", language);
+      const outbound = wrapOutbound(getRouteReply("price", language), "price", language, {
+        skipMenu: true
+      });
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply || "");
       return finish(session, userId, outbound);
     }
     case "address": {
-      const outbound = wrapOutbound(getRouteReply("address", language), "address", language);
+      const outbound = wrapOutbound(getRouteReply("address", language), "address", language, {
+        skipMenu: true
+      });
+      outbound.skipMenu = true;
       pushHistory(session, "user", userLabel);
       pushHistory(session, "assistant", outbound.reply || "");
       return finish(session, userId, outbound);
@@ -247,36 +294,28 @@ function startConcierge(session, language) {
 
 function buildMainMenuWelcome(session, language, options = {}) {
   const lang = language === "kz" ? "kz" : "ru";
-  let prefix = "";
+  let reply = getPremiumWelcomeMessage(session, language);
 
-  if (options.reason === "greeting_or_menu") {
-    prefix =
-      lang === "kz"
-        ? "Әрине 🌿 Жайлап бастайық.\n\n"
-        : "Конечно 🌿 Начнём спокойно.\n\n";
-  } else if (
+  if (
     options.reason === "invalid_booking_answer" ||
     options.reason === "invalid_concierge_answer"
   ) {
-    prefix =
+    const prefix =
       lang === "kz"
         ? "Түсінемін — бұл қадамға жауап емес 🌿\n\n"
         : "Понимаю — это не ответ на текущий шаг 🌿\n\n";
-  } else if (options.reason === "intent" || options.reason === "main_menu") {
-    prefix =
-      lang === "kz"
-        ? "Жақсы 🌿\n\n"
-        : "Хорошо 🌿\n\n";
+    reply = prefix + reply;
+  } else if (options.reason === "greeting_or_menu") {
+    const prefix =
+      lang === "kz" ? "Әрине 🌿\n\n" : "Конечно 🌿\n\n";
+    reply = prefix + reply;
   }
 
-  const greeting =
-    welcomeMessage(session, language) || getScenarioResponse("greeting", language);
-  const reply = prefix + greeting;
   return {
     reply,
     messages: [{ type: "text", text: reply }],
-    menuContext: "main",
-    skipMenu: false
+    menuContext: "welcome_feeling",
+    skipMenu: true
   };
 }
 
@@ -297,6 +336,24 @@ async function handleIncomingMessage({
 
   let pendingRoute = null;
   let language = normalizeLanguage(session.language);
+
+  // ━━━ САЙТ (sakinawellness.kz) — ДО global reset / меню ━━━
+  if (!isButton && isSiteDeepLinkMessage(incomingText)) {
+    language = normalizeLanguage(
+      resolveClientLanguage(incomingText, session.language, { isButton })
+    );
+    session.language = language;
+    const siteDeep = parseWebsiteDeepLink(incomingText);
+    const siteOutbound = handleDeepLink(
+      session,
+      userId,
+      siteDeep,
+      language,
+      incomingText,
+      isButton
+    );
+    if (siteOutbound) return siteOutbound;
+  }
 
   // ━━━ ABSOLUTE FIRST: global intent → reset → main menu ━━━
   const gate = runGlobalIntentGate({
@@ -340,7 +397,9 @@ async function handleIncomingMessage({
     !isConciergeFlowActive(session) &&
     !isExplicitBookingRequest(incomingText)
   ) {
-    const emotional = tryEmotionalRouting(incomingText, language, { isButton });
+    const emotional = tryEmotionalRouting(incomingText, language, session, {
+      isButton
+    });
     if (emotional) {
       session.menuContext = emotional.menuContext;
       session.lastEmotionalIntent = emotional.intent;
@@ -355,19 +414,6 @@ async function handleIncomingMessage({
       });
       return finish(session, userId, emotional.outbound);
     }
-  }
-
-  const deepLink = parseWebsiteDeepLink(incomingText);
-  if (deepLink?.action) {
-    const deepOutbound = handleDeepLink(
-      session,
-      userId,
-      deepLink,
-      language,
-      incomingText,
-      isButton
-    );
-    if (deepOutbound) return deepOutbound;
   }
 
   const distressed = detectEmotionalDistress(incomingText);
@@ -455,11 +501,11 @@ async function handleIncomingMessage({
       }
 
       if (conciergeResult.action === "other_practices") {
-        const routeReply = getRouteReply("practices", language);
-        const outbound = wrapOutbound(routeReply, "practices", language);
-        pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
-        pushHistory(session, "assistant", outbound.reply || "");
-        return finish(session, userId, outbound);
+        if (conciergeResult.outbound) {
+          pushHistory(session, "user", incomingText);
+          pushHistory(session, "assistant", conciergeResult.outbound.reply || "");
+          return finish(session, userId, conciergeResult.outbound);
+        }
       }
 
       if (conciergeResult.outbound) {
@@ -519,7 +565,7 @@ async function handleIncomingMessage({
       session.booking = null;
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
-      return finish(session, userId, wrapBookingResult(result, session));
+      return finish(session, userId, wrapBookingResult(result, session, language));
     }
 
     if (result.done) {
@@ -534,17 +580,26 @@ async function handleIncomingMessage({
       pushHistory(session, "user", incomingText);
       pushHistory(session, "assistant", result.reply);
       logger.info("Booking completed", { userId, service: lead.payload.service });
-      return finish(session, userId, wrapBookingResult(result, session));
+      return finish(session, userId, wrapBookingResult(result, session, language));
     }
 
     syncLegacyMirrors(session);
     syncBookingWaitFlags(session);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", result.reply);
-    return finish(session, userId, wrapBookingResult(result, session));
+    return finish(session, userId, wrapBookingResult(result, session, language));
   }
 
   const routeName = pendingRoute || routeIncomingText(incomingText, buttonId, activeMenuContext);
+
+  if (routeName && routeName.startsWith("__intent_")) {
+    const intentKey = routeName.replace("__intent_", "");
+    const outbound = buildPremiumRecommendationOutbound(session, language, intentKey);
+    pushHistory(session, "user", incomingText);
+    pushHistory(session, "assistant", outbound.reply);
+    markEmotionalHold(session);
+    return finish(session, userId, outbound);
+  }
 
   const emotionalMenuChoice =
     isEmotionalMenuContext(activeMenuContext) &&

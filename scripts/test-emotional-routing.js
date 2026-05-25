@@ -22,20 +22,23 @@ for (const [text, intent, tier] of cases) {
   }
 }
 
-const ru = tryEmotionalRouting("я устала", "ru");
-if (!ru || !/Понимаю вас/.test(ru.outbound.reply) || !/1️⃣ 🌸/.test(ru.outbound.reply)) {
+const { getSession } = require("../src/sessionStore");
+const session = getSession("emo-test");
+
+const ru = tryEmotionalRouting("я устала", "ru", session);
+if (!ru || !/Понимаю вас/.test(ru.outbound.reply) || !/Подробнее/.test(ru.outbound.reply)) {
   console.error("FAIL ru outbound");
   process.exit(1);
 }
 
-const kz = tryEmotionalRouting("шаршадым", "kz");
-if (!kz || !/Түсінемін/.test(kz.outbound.reply) || !/Практика таңдауға/.test(kz.outbound.reply)) {
+const kz = tryEmotionalRouting("шаршадым", "kz", session);
+if (!kz || !/Түсінемін/.test(kz.outbound.reply) || !/Толығырақ/.test(kz.outbound.reply)) {
   console.error("FAIL kz outbound");
   process.exit(1);
 }
 
-const heavy = tryEmotionalRouting("мне плохо", "ru");
-if (!heavy || heavy.menuContext !== "emotional_heavy" || !/Мне очень жаль/.test(heavy.outbound.reply)) {
+const heavy = tryEmotionalRouting("мне плохо", "ru", session);
+if (!heavy || heavy.menuContext !== "recommendation_card" || !/Мне очень жаль/.test(heavy.outbound.reply)) {
   console.error("FAIL heavy");
   process.exit(1);
 }

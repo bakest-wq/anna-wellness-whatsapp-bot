@@ -28,10 +28,9 @@ function shouldSendInteractiveButtons(menuContext) {
 }
 
 async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
-  const toSend =
-    outbound.skipMenu === true
-      ? outbound.messages
-      : enrichOutboundMessages(outbound.messages, lang, "main");
+  const toSend = enrichOutboundMessages(outbound.messages, lang, "main", {
+    skipMenu: outbound.skipMenu
+  });
 
   if (toSend.length) {
     await sendOutboundMessages({
@@ -146,9 +145,9 @@ async function processIncomingMessage({
   lang = normalizeLanguage(sessionAfter.language);
   const menuContext = result?.menuContext || "main";
 
-  const toSend = result?.skipMenu
-    ? outbound
-    : enrichOutboundMessages(outbound, lang, menuContext);
+  const toSend = enrichOutboundMessages(outbound, lang, menuContext, {
+    skipMenu: result?.skipMenu
+  });
 
   if (result?.conciergeTyping && toSend.length) {
     await new Promise((r) => setTimeout(r, CONCIERGE_DELAY_MS));

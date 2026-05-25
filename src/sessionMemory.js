@@ -39,7 +39,10 @@ function isBookingComplete(session) {
  * Следующий недостающий шаг записи (не повторяет заполненное).
  */
 function getNextMissingBookingStep(session) {
-  if (!session.selectedPractice) return "service";
+  const hasSelection =
+    session.selectedPractice ||
+    (session.bookingComment && /^Пакет:/i.test(session.bookingComment));
+  if (!hasSelection) return "service";
   if (!session.bookingDate) return "day";
   if (!session.bookingTime) return "time";
   if (!session.clientName) return "name";
@@ -153,9 +156,10 @@ function startBookingFlow(session, options = {}) {
 
   if (packageName) {
     session.bookingComment = `Пакет: ${packageName}`;
-    if (!session.selectedPracticeTitle) {
-      session.selectedPracticeTitle = packageName;
-    }
+    session.selectedPracticeTitle = packageName;
+    session.selectedPractice = options.packageId
+      ? `package:${options.packageId}`
+      : "package";
   }
 
   prefillClientFromProfile(session);

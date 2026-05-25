@@ -3,8 +3,6 @@
 import {
   motion,
   useInView,
-  useScroll,
-  useTransform,
   type HTMLMotionProps,
   type Variants,
 } from "framer-motion";
@@ -24,13 +22,30 @@ export const cinematicRevealVariants: Variants = {
   }),
 };
 
-/** @deprecated Use cinematicRevealVariants — kept for compatibility */
+export const mobileRevealVariants: Variants = {
+  hidden: { opacity: 0, y: 20, scale: 0.99 },
+  visible: (delay = 0) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.8, delay, ease: easeLuxury },
+  }),
+};
+
+/** @deprecated Use cinematicRevealVariants */
 export const fadeUpVariants = cinematicRevealVariants;
 
 export const staggerContainer: Variants = {
   hidden: {},
   visible: {
     transition: { staggerChildren: 0.11, delayChildren: 0.08 },
+  },
+};
+
+export const mobileStaggerContainer: Variants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.09, delayChildren: 0.06 },
   },
 };
 
@@ -44,11 +59,20 @@ export const staggerChild: Variants = {
   },
 };
 
+export const imageRevealVariants: Variants = {
+  hidden: { opacity: 0, scale: 1.04 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: { duration: 1.05, ease: easeLuxury },
+  },
+};
+
 type FadeUpProps = {
   children: ReactNode;
   className?: string;
   delay?: number;
-  as?: "div" | "section" | "article";
+  as?: "div" | "section" | "article" | "li";
 };
 
 export function FadeUp({
@@ -58,9 +82,13 @@ export function FadeUp({
   as = "div",
 }: FadeUpProps) {
   const ref = useRef(null);
-  const { reducedMotion } = useLuxuryMotion();
-  const inView = useInView(ref, { once: true, margin: "-8% 0px" });
+  const { reducedMotion, isMobile } = useLuxuryMotion();
+  const inView = useInView(ref, {
+    once: true,
+    margin: isMobile ? "-4% 0px" : "-8% 0px",
+  });
   const Component = motion[as];
+  const variants = isMobile ? mobileRevealVariants : cinematicRevealVariants;
 
   if (reducedMotion) {
     const Tag = as;
@@ -72,7 +100,7 @@ export function FadeUp({
       ref={ref}
       initial="hidden"
       animate={inView ? "visible" : "hidden"}
-      variants={cinematicRevealVariants}
+      variants={variants}
       custom={delay}
       className={className}
     >
@@ -85,37 +113,52 @@ export function CinematicReveal(props: FadeUpProps) {
   return <FadeUp {...props} />;
 }
 
-type ParallaxDepthProps = {
+type RevealImageWrapProps = {
   children: ReactNode;
   className?: string;
-  /** Desktop parallax travel in px */
-  depth?: number;
+  delay?: number;
 };
 
-export function ParallaxDepth({
+export function RevealImageWrap({
   children,
   className,
-  depth = 36,
-}: ParallaxDepthProps) {
+  delay = 0,
+}: RevealImageWrapProps) {
   const ref = useRef(null);
-  const { enableParallax, reducedMotion } = useLuxuryMotion();
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start end", "end start"],
-  });
-  const y = useTransform(scrollYProgress, [0, 1], [depth * 0.35, -depth * 0.35]);
+  const { reducedMotion } = useLuxuryMotion();
+  const inView = useInView(ref, { once: true, margin: "-6% 0px" });
 
-  if (!enableParallax || reducedMotion) {
+  if (reducedMotion) {
     return <div className={className}>{children}</div>;
   }
 
   return (
-    <div ref={ref} className={cn("parallax-depth-host", className)}>
-      <motion.div style={{ y }} className="parallax-depth-layer">
-        {children}
-      </motion.div>
-    </div>
+    <motion.div
+      ref={ref}
+      initial="hidden"
+      animate={inView ? "visible" : "hidden"}
+      variants={imageRevealVariants}
+      custom={delay}
+      transition={{ delay }}
+      className={cn("overflow-hidden", className)}
+    >
+      {children}
+    </motion.div>
   );
+}
+
+type ParallaxDepthProps = {
+  children: ReactNode;
+  className?: string;
+  depth?: number;
+};
+
+/** Scroll-linked parallax removed — avoids hydration errors; use FadeUp on parent. */
+export function ParallaxDepth({
+  children,
+  className,
+}: ParallaxDepthProps) {
+  return <div className={cn(className)}>{children}</div>;
 }
 
 type LuxuryInteractiveProps = {
@@ -140,7 +183,7 @@ export function LuxuryInteractive({
   return (
     <Component
       className={cn("luxury-interactive", className)}
-      whileTap={{ scale: 0.992 }}
+      whileTap={{ scale: 0.988 }}
       whileHover={
         enableHoverLift
           ? { y: -4, transition: { duration: 0.45, ease: easeLuxury } }

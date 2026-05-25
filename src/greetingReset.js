@@ -2,8 +2,7 @@
  * Жёсткий сброс при приветствии — ДО любого booking / waitingFor* / FSM.
  */
 
-const { getScenarioResponse } = require("./responses");
-const { getReturningGreeting } = require("./brand");
+const { getPremiumWelcomeMessage } = require("./premiumUx");
 const { hardResetFlow } = require("./sessionMemory");
 const { saveSession } = require("./sessionStore");
 
@@ -50,22 +49,11 @@ function isGreetingReset(text) {
 }
 
 function buildMainMenuOutbound(session, language) {
-  const lang = language === "kz" ? "kz" : "ru";
-  const prefix =
-    lang === "kz"
-      ? "Әрине 🌿 Жайлап бастайық.\n\n"
-      : "Конечно 🌿 Начнём спокойно.\n\n";
-  const greeting =
-    (session.profile?.name && session.profile.visits > 0
-      ? getReturningGreeting(lang, session.profile.name)
-      : null) || getScenarioResponse("greeting", lang);
-  const { getMenuTextBlock } = require("./menus");
-  const menu = getMenuTextBlock(lang, "main");
-  const reply = `${prefix}${greeting}\n\n${menu}`;
+  const reply = getPremiumWelcomeMessage(session, language);
   return {
     reply,
     messages: [{ type: "text", text: reply }],
-    menuContext: "main",
+    menuContext: "welcome_feeling",
     skipMenu: true
   };
 }

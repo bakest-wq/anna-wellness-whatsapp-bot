@@ -22,9 +22,11 @@ const BRAND = {
 /** Готовые тексты с сайта (deep links) */
 const WA_MESSAGES = {
   concierge: "Здравствуйте, хочу подобрать практику 🌿",
+  conciergeHelp: "Здравствуйте, помогите подобрать практику 🌿",
   prices: "Здравствуйте, хочу узнать цены на практики Sakina Wellness",
   address: "Здравствуйте, подскажите, пожалуйста, адрес Sakina Wellness",
-  genericBook: "Здравствуйте, хочу записаться в Sakina Wellness"
+  genericBook: "Здравствуйте, хочу записаться в Sakina Wellness",
+  packagePick: "Здравствуйте, хочу выбрать пакет"
 };
 
 const SERVICES = [
@@ -136,7 +138,7 @@ const PACKAGES = [
     includes: ["Массаж «5 континентов»", "Дыхательная практика «Дыхание Жизни»"],
     result: "Глубокое расслабление, снятие напряжения, мягкое восстановление энергии.",
     price: "45 000 ₸",
-    waBook: "Здравствуйте, хочу записаться на пакет Sakina Relax"
+    waBook: "Здравствуйте, хочу выбрать пакет Sakina Relax"
   },
   {
     id: "sakina-reset",
@@ -145,7 +147,7 @@ const PACKAGES = [
     includes: ["«5 континентов» с бамбуковыми банками", "EarthFlow"],
     result: "Перезагрузка тела, заземление, освобождение от накопленной усталости.",
     price: "48 000 ₸",
-    waBook: "Здравствуйте, хочу записаться на пакет Sakina Reset"
+    waBook: "Здравствуйте, хочу выбрать пакет Sakina Reset"
   },
   {
     id: "sakina-deep",
@@ -154,7 +156,7 @@ const PACKAGES = [
     includes: ["«5 континентов» с огнём", "Access Bars"],
     result: "Глубокое расслабление тела и ума, ощущение внутренней лёгкости.",
     price: "47 000 ₸",
-    waBook: "Здравствуйте, хочу записаться на пакет Sakina Deep"
+    waBook: "Здравствуйте, хочу выбрать пакет Sakina Deep"
   },
   {
     id: "sakina-balance",
@@ -164,7 +166,7 @@ const PACKAGES = [
     result:
       "Диагностика состояния, дыхательное восстановление и возвращение внутреннего баланса.",
     price: "45 000 ₸",
-    waBook: "Здравствуйте, хочу записаться на пакет Sakina Balance"
+    waBook: "Здравствуйте, хочу выбрать пакет Sakina Balance"
   },
   {
     id: "sakina-premium-journey",
@@ -175,7 +177,7 @@ const PACKAGES = [
       "Полная wellness-перезагрузка: тело, дыхание, энергия и внутреннее спокойствие.",
     price: "75 000 ₸",
     featured: true,
-    waBook: "Здравствуйте, хочу записаться на пакет Sakina Premium Journey"
+    waBook: "Здравствуйте, хочу выбрать пакет Sakina Premium Journey"
   }
 ];
 

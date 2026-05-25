@@ -13,7 +13,9 @@ import {
 const LuxuryMotionContext = createContext<LuxuryMotionCapabilities>({
   reducedMotion: false,
   enableParallax: false,
+  enableSoftParallax: false,
   enableHoverLift: false,
+  isMobile: false,
 });
 
 export function LuxuryMotionProvider({ children }: { children: ReactNode }) {

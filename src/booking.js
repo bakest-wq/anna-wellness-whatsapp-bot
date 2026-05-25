@@ -77,17 +77,22 @@ function getBookingStartOutbound(language) {
 
 function getBookingAfterPreselectOutbound(session, language) {
   const lang = language === "kz" ? "kz" : "ru";
-  const intro =
-    lang === "kz"
-      ? `Керемет таңдау 🤍\n${session.selectedPracticeTitle}\n\n`
-      : `Прекрасный выбор 🤍\n${session.selectedPracticeTitle}\n\n`;
+  const title = session.selectedPracticeTitle || "";
+  const fromSite = session.source === "sakinawellness.kz";
+  const intro = fromSite
+    ? lang === "kz"
+      ? `Керемет 🤍\n${title} бойынша жазылуды жалғастырамыз.\n\n`
+      : `С удовольствием 🤍\nЗапись на ${title}.\n\n`
+    : lang === "kz"
+      ? `Керемет таңдау 🤍\n${title}\n\n`
+      : `Прекрасный выбор 🤍\n${title}\n\n`;
   syncCurrentStep(session);
   const text = intro + questionForStep(session.currentStep, session, language);
   return {
     reply: text,
     messages: [{ type: "text", text }],
-    skipMenu: session.currentStep !== "service",
-    menuContext: session.currentStep === "service" ? "booking_service" : "main"
+    skipMenu: true,
+    menuContext: "main"
   };
 }
 
@@ -309,8 +314,8 @@ function processBookingSession(session, text, language, options = {}) {
       return {
         done: true,
         reply: getScenarioResponse("booking_complete", lang),
-        skipMenu: false,
-        menuContext: "main"
+        skipMenu: true,
+        menuContext: "after_booking"
       };
     }
   }

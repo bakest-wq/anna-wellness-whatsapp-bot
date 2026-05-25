@@ -3,9 +3,9 @@
  * Срабатывает после global reset, до обычного меню / FSM.
  */
 
-const { getMenuTextBlock } = require("./menus");
 const { isExplicitBookingRequest } = require("./emotionalSupport");
 const { WELLNESS } = require("./knowledge");
+const { buildPremiumRecommendationOutbound } = require("./premiumUx");
 
 const HEAVY_PATTERNS = [
   /(мне\s+)?(очень\s+)?плохо/i,
@@ -73,57 +73,6 @@ const INTENT_RULES = [
   }
 ];
 
-const REPLIES = {
-  ru: {
-    fatigue: `Понимаю вас 🤍
-Когда внутри много усталости, телу и нервной системе часто хочется тишины и бережного восстановления.
-Я могу мягко помочь подобрать практику под ваше состояние 🌿`,
-    anxiety: `Понимаю вас 🤍
-Тревога часто забирает много сил — телу и нервной системе нужна тишина и мягкая опора.
-Я могу бережно подобрать практику под ваше состояние 🌿`,
-    body_tension: `Понимаю вас 🤍
-Когда тело держит напряжение, ему часто нужен спокойный, бережный контакт — без спешки.
-Я могу мягко подсказать практику под ваше состояние 🌿`,
-    low_energy: `Понимаю вас 🤍
-Когда мало сил, важно не требовать от себя лишнего — только мягкое восстановление.
-Я могу помочь подобрать практику в вашем ритме 🌿`,
-    emotional_exhaustion: `Понимаю вас 🤍
-Когда внутри много усталости и опустошения, телу нужны тишина и бережное восстановление.
-Я могу мягко помочь подобрать практику под ваше состояние 🌿`,
-    need_relaxation: `Понимаю вас 🤍
-Желание расслабиться — очень естественное. Здесь можно без спешки подобрать мягкий формат 🌿`,
-    need_calm: `Понимаю вас 🤍
-Когда хочется спокойствия, телу и нервной системе важны тишина и бережный ритм.
-Я могу мягко помочь подобрать практику 🌿`,
-    heavy_distress: `Мне очень жаль, что вам сейчас так тяжело 🤍
-Вы можете не спешить. Я рядом, чтобы мягко подсказать варианты заботы о себе.`
-  },
-  kz: {
-    fatigue: `Түсінемін 🤍
-Ішкі шаршау жиналған кезде, денеге тыныштық пен жұмсақ қалпына келу керек болады.
-Сізге жағдайыңызға сай практиканы ақырын таңдауға көмектесейін 🌿`,
-    anxiety: `Түсінемін 🤍
-Мазасыздық күшті шаршатады — дене мен жүйкеге тыныштық пен жұмсақ қолдау керек.
-Жағдайыңызға сай практиканы абайлап таңдауға көмектесейін 🌿`,
-    body_tension: `Түсінемін 🤍
-Дене кернеуді ұстап тұрғанда, асықпай, жұмсақ қамқорлық маңызды.
-Жағдайыңызға сай практиканы ақырын таңдауға көмектесейін 🌿`,
-    low_energy: `Түсінемін 🤍
-Қуаты аз болғанда, өзіңізден артық талап етпей-ақ, жұмсақ қалпына келу маңызды.
-Сіздің ритміңізге сай практиканы таңдауға көмектесейін 🌿`,
-    emotional_exhaustion: `Түсінемін 🤍
-Ішкі шаршау мен босаңсу жиналғанда, денеге тыныштық пен жұмсақ қалпына келу керек.
-Жағдайыңызға сай практиканы ақырын таңдауға көмектесейін 🌿`,
-    need_relaxation: `Түсінемін 🤍
-Босанғыңыз келуі — өте табиғи. Мұнда асықпай, жұмсақ формат таңдауға болады 🌿`,
-    need_calm: `Түсінемін 🤍
-Тыныштық қажет болғанда, дене мен жүйкеге асықпай, абайлап қарау маңызды.
-Жұмсақ практика таңдауға көмектесейін 🌿`,
-    heavy_distress: `Қазір сізге ауыр екенін түсінемін 🤍
-Асықпай ала беріңіз. Мен қасыңыздамын — өзіңізге жұмсақ қамқорлық нұсқаларын айтып беремін.`
-  }
-};
-
 function normalize(text) {
   return String(text || "")
     .normalize("NFKC")
@@ -152,12 +101,6 @@ function detectEmotionalIntent(text) {
   return null;
 }
 
-function getEmotionalReply(language, intent, tier) {
-  const lang = language === "kz" ? "kz" : "ru";
-  const key = tier === "heavy" ? "heavy_distress" : intent;
-  return REPLIES[lang][key] || REPLIES[lang].fatigue;
-}
-
 function getAdminContactReply(language) {
   const phone = WELLNESS.whatsappPhone || process.env.ADMIN_PHONE || "";
   const display = phone.replace(/^\+/, "");
@@ -181,38 +124,34 @@ function getAdminContactReply(language) {
  * @param {{ isButton?: boolean }} [options]
  * @returns {null|{ intent: string, tier: string, menuContext: string, outbound: object }}
  */
-function tryEmotionalRouting(text, language, options = {}) {
+function tryEmotionalRouting(text, language, session, options = {}) {
   if (options.isButton) return null;
   if (isExplicitBookingRequest(text)) return null;
 
   const detected = detectEmotionalIntent(text);
   if (!detected) return null;
 
-  const lang = language === "kz" ? "kz" : "ru";
-  const reply = getEmotionalReply(lang, detected.intent, detected.tier);
-  const menuContext =
-    detected.tier === "heavy" ? "emotional_heavy" : "emotional_light";
-  const menu = getMenuTextBlock(lang, menuContext);
-  const fullReply = `${reply}\n\n${menu}`;
-
   console.log("EMOTIONAL INTENT:", detected.intent);
 
+  const routingIntent =
+    detected.tier === "heavy" ? "heavy_distress" : detected.intent;
+
+  const outbound = buildPremiumRecommendationOutbound(
+    session,
+    language,
+    routingIntent
+  );
+
   return {
-    intent: detected.intent,
+    intent: routingIntent,
     tier: detected.tier,
-    menuContext,
-    outbound: {
-      reply: fullReply,
-      messages: [{ type: "text", text: fullReply }],
-      menuContext,
-      skipMenu: true
-    }
+    menuContext: outbound.menuContext,
+    outbound
   };
 }
 
 module.exports = {
   detectEmotionalIntent,
   tryEmotionalRouting,
-  getEmotionalReply,
   getAdminContactReply
 };
