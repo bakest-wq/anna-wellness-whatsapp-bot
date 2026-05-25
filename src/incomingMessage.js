@@ -181,13 +181,21 @@ async function processIncomingMessage({
     shouldSendInteractiveButtons(menuContext) &&
     waConfig.provider === "green"
   ) {
-    await tryInteractiveButtonsOnly({
-      config: waConfig,
-      to: payload.userId,
-      language: lang,
-      menuContext,
-      logger
-    });
+    try {
+      await tryInteractiveButtonsOnly({
+        config: waConfig,
+        to: payload.userId,
+        language: lang,
+        menuContext,
+        logger
+      });
+    } catch (err) {
+      logger.warn("Interactive buttons skipped", {
+        userId: payload.userId,
+        menuContext,
+        message: err.message
+      });
+    }
   }
 
   sessionAfter.menuContext = menuContext;

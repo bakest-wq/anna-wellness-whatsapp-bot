@@ -319,6 +319,7 @@ function getContextMaxChoice(context) {
 function getContextItems(context) {
   const cfg = MENU_CONTEXTS[context] || MENU_CONTEXTS.default;
   if (cfg.type === "practice_picker") return [];
+  if (!Array.isArray(cfg.items)) return [];
   return cfg.items.map((key) => ITEMS[key]).filter(Boolean);
 }
 
@@ -553,6 +554,10 @@ function parseNumericChoice(text, menuContext) {
   if (menuContext === "concierge_card") {
     const action = CARD_ACTIONS[n - 1];
     return action?.route || null;
+  }
+
+  if (menuContext === "concierge_emotion" || menuContext === "concierge_outcome") {
+    return null;
   }
 
   if (menuContext === "practices_picker" || menuContext === "booking_service") {
