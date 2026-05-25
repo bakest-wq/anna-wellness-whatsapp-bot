@@ -53,8 +53,8 @@ function buildMainMenuOutbound(session, language) {
   const lang = language === "kz" ? "kz" : "ru";
   const prefix =
     lang === "kz"
-      ? "Әрине 🌿 Жаңа хабарламадан бастайық.\n\n"
-      : "Конечно 🌿 Начнём с чистого листа — без спешки.\n\n";
+      ? "Әрине 🌿 Жайлап бастайық.\n\n"
+      : "Конечно 🌿 Начнём спокойно.\n\n";
   const greeting =
     (session.profile?.name && session.profile.visits > 0
       ? getReturningGreeting(lang, session.profile.name)

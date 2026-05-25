@@ -15,8 +15,8 @@ for (const text of ["назад", "⬅️ Назад", "Назад", "главн
   s.currentStep = "time";
   const hit = handleGlobalIntentFirst({ chatId, session: s, text, language: "ru" });
   const hasTime = /Какое время/.test(hit?.outbound?.reply || "");
-  const hasMenu = /1️⃣/.test(hit?.outbound?.reply || "") && /6️⃣/.test(hit?.outbound?.reply || "");
-  console.log(text, "→", hit ? "reset" : "FAIL", "timeQ:", hasTime, "menu6:", hasMenu);
+  const hasMenu = /1️⃣/.test(hit?.outbound?.reply || "") && /4️⃣/.test(hit?.outbound?.reply || "");
+  console.log(text, "→", hit ? "reset" : "FAIL", "timeQ:", hasTime, "menu4:", hasMenu);
   if (!hit || hasTime || !hasMenu) process.exit(1);
 }
 

@@ -252,8 +252,8 @@ function buildMainMenuWelcome(session, language, options = {}) {
   if (options.reason === "greeting_or_menu") {
     prefix =
       lang === "kz"
-        ? "Әрине 🌿 Жаңа хабарламадан бастайық.\n\n"
-        : "Конечно 🌿 Начнём с чистого листа — без спешки.\n\n";
+        ? "Әрине 🌿 Жайлап бастайық.\n\n"
+        : "Конечно 🌿 Начнём спокойно.\n\n";
   } else if (
     options.reason === "invalid_booking_answer" ||
     options.reason === "invalid_concierge_answer"
