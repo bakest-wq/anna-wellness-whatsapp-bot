@@ -26,8 +26,25 @@ const { getSession } = require("../src/sessionStore");
 const session = getSession("emo-test");
 
 const ru = tryEmotionalRouting("я устала", "ru", session);
-if (!ru || !/Понимаю вас/.test(ru.outbound.reply) || !/Подробнее/.test(ru.outbound.reply)) {
-  console.error("FAIL ru outbound");
+if (
+  !ru ||
+  !/Понимаю/.test(ru.outbound.reply) ||
+  !/EarthFlow|5 континент/i.test(ru.outbound.reply) ||
+  !/Подробнее/.test(ru.outbound.reply) ||
+  /Выберите.*практику/i.test(ru.outbound.reply)
+) {
+  console.error("FAIL ru outbound", ru?.outbound?.reply?.slice(0, 200));
+  process.exit(1);
+}
+
+const anxiety = tryEmotionalRouting("мне тревожно", "ru", session);
+if (
+  !anxiety ||
+  !/Access Bars/.test(anxiety.outbound.reply) ||
+  !/EarthFlow/.test(anxiety.outbound.reply) ||
+  /Выберите.*практику/i.test(anxiety.outbound.reply)
+) {
+  console.error("FAIL anxiety outbound");
   process.exit(1);
 }
 
@@ -43,8 +60,20 @@ if (!heavy || heavy.menuContext !== "recommendation_card" || !/Мне очень
   process.exit(1);
 }
 
-if (resolveMenuAction(null, "2", "emotional_light") !== "practices") {
-  console.error("FAIL emotional_light digit 2");
+if (resolveMenuAction(null, "2", "welcome_feeling") !== "__intent_anxiety__") {
+  console.error("FAIL welcome_feeling digit 2", resolveMenuAction(null, "2", "welcome_feeling"));
+  process.exit(1);
+}
+
+if (resolveMenuAction(null, "2", "main") === "booking") {
+  console.log("OK main digit 2 is booking (use welcome_feeling context for emotions)");
+}
+
+if (
+  resolveMenuAction(null, "Тревога или напряжение", "welcome_feeling") !==
+  "__intent_anxiety__"
+) {
+  console.error("FAIL welcome label anxiety");
   process.exit(1);
 }
 

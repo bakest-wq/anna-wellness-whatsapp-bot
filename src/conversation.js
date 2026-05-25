@@ -71,7 +71,8 @@ const {
   getPremiumWelcomeMessage,
   buildPremiumRecommendationOutbound,
   buildAlternativeRecommendationOutbound,
-  getAfterBookingMessage
+  getAfterBookingMessage,
+  resolveEmotionalSelectionRoute
 } = require("./premiumUx");
 
 const SCENARIO_INTENTS = [
@@ -105,6 +106,9 @@ function welcomeMessage(session, language) {
 }
 
 function finish(session, userId, outbound) {
+  if (outbound?.menuContext) {
+    session.menuContext = outbound.menuContext;
+  }
   syncLegacyMirrors(session);
   syncBookingWaitFlags(session);
   saveSession(userId, session);
@@ -595,10 +599,36 @@ async function handleIncomingMessageCore({
     return finish(session, userId, wrapBookingResult(result, session, language));
   }
 
-  const routeName = pendingRoute || routeIncomingText(incomingText, buttonId, activeMenuContext);
+  let routeName = pendingRoute || routeIncomingText(incomingText, buttonId, activeMenuContext);
+
+  if (routeName === "concierge_emotion_pick") {
+    const intentKey = resolveEmotionalSelectionRoute(
+      incomingText,
+      buttonId,
+      activeMenuContext
+    );
+    if (intentKey) {
+      routeName = `__intent_${intentKey}__`;
+    }
+  }
+
+  if (!routeName?.startsWith("__intent_")) {
+    const feltIntent = resolveEmotionalSelectionRoute(
+      incomingText,
+      buttonId,
+      activeMenuContext
+    );
+    if (
+      feltIntent &&
+      (isEmotionalMenuContext(activeMenuContext) ||
+        /тревог|напряжен|усталост|расслаб|шаршау|мазасыз/i.test(incomingText))
+    ) {
+      routeName = `__intent_${feltIntent}__`;
+    }
+  }
 
   if (routeName && routeName.startsWith("__intent_")) {
-    const intentKey = routeName.replace("__intent_", "");
+    const intentKey = routeName.replace(/^__intent_/, "").replace(/__$/, "");
     const outbound = buildPremiumRecommendationOutbound(session, language, intentKey);
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", outbound.reply);
@@ -702,9 +732,9 @@ async function handleIncomingMessageCore({
         return finish(session, userId, outbound);
       }
       if (routeName === "concierge_other") {
-        const outbound = wrapOutbound(getRouteReply("practices", language), "practices", language);
+        const outbound = buildAlternativeRecommendationOutbound(session, language);
         pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
-        pushHistory(session, "assistant", outbound.reply || "");
+        pushHistory(session, "assistant", outbound.reply);
         return finish(session, userId, outbound);
       }
     }

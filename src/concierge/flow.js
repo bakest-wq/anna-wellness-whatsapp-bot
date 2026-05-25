@@ -159,16 +159,18 @@ function processConciergeMessage(session, text, language, options = {}) {
     concierge.step = "result";
     persistConciergeToSession(session, concierge);
 
-    const { buildPremiumRecommendationMessage } = require("../premiumUx");
+    const {
+      buildPremiumRecommendationMessage,
+      CONCIERGE_EMOTION_TO_ROUTING,
+      persistPremiumRecommendation
+    } = require("../premiumUx");
     const routingIntent =
+      CONCIERGE_EMOTION_TO_ROUTING[emotionId] ||
       session.lastEmotionalIntent ||
-      (emotionId === "want_relax"
-        ? "need_relaxation"
-        : emotionId === "want_peace"
-          ? "need_calm"
-          : emotionId);
+      emotionId;
+    persistPremiumRecommendation(session, lang, routingIntent);
     const reply = buildPremiumRecommendationMessage(lang, routingIntent, {
-      skipEmpathy: true
+      skipEmpathy: false
     });
 
     return {
@@ -214,10 +216,18 @@ function processConciergeMessage(session, text, language, options = {}) {
     concierge.step = "result";
     persistConciergeToSession(session, concierge);
 
-    const { buildPremiumRecommendationMessage } = require("../premiumUx");
-    const routingIntent = session.lastEmotionalIntent || concierge.emotion;
+    const {
+      buildPremiumRecommendationMessage,
+      CONCIERGE_EMOTION_TO_ROUTING,
+      persistPremiumRecommendation
+    } = require("../premiumUx");
+    const routingIntent =
+      CONCIERGE_EMOTION_TO_ROUTING[concierge.emotion] ||
+      session.lastEmotionalIntent ||
+      concierge.emotion;
+    persistPremiumRecommendation(session, lang, routingIntent);
     const reply = buildPremiumRecommendationMessage(lang, routingIntent, {
-      skipEmpathy: true
+      skipEmpathy: false
     });
     return {
       handled: true,

@@ -13,10 +13,9 @@ const { processIncomingMessage } = require("./incomingMessage");
 const { parseIncomingFromGreen, sendWhatsApp } = require("./whatsapp");
 const {
   logFallbackTriggered,
-  shouldSendMaintenanceToUser,
   getMaintenanceMessage,
-  buildSafeMenuOutbound,
-  isWhatsAppDeliveryError
+  isWhatsAppDeliveryError,
+  resolveWebhookRecoveryPlan
 } = require("./safeFallback");
 const { getSession } = require("./sessionStore");
 
@@ -122,27 +121,39 @@ async function processWebhook(req, res) {
       if (!p?.userId) return;
 
       const session = getSession(p.userId);
-      const menuOutbound = buildSafeMenuOutbound(session, session.language || "ru");
+      const incomingText = String(p.buttonText || p.text || "").trim();
+      const plan = resolveWebhookRecoveryPlan(err, session, session.language || "ru", {
+        incomingText
+      });
 
       try {
         await sendWhatsApp({
           config: waConfig,
           to: p.userId,
-          text: menuOutbound.reply,
+          text: plan.menuOutbound.reply,
           logger
         });
-        logger.info("Safe menu fallback sent after webhook error", { userId: p.userId });
+        logger.info("Safe menu fallback sent after webhook error", {
+          userId: p.userId,
+          forceMenu: plan.forceMenu
+        });
         return;
       } catch (sendErr) {
         logFallbackTriggered(sendErr, { userId: p.userId, stage: "serverSafeMenuSend" });
       }
 
-      if (shouldSendMaintenanceToUser(err)) {
+      if (plan.sendMaintenance) {
         await sendWhatsApp({
           config: waConfig,
           to: p.userId,
-          text: `Здравствуйте 🌿 ${getMaintenanceMessage(session.language)}`,
+          text: getMaintenanceMessage(session.language),
           logger
+        });
+        logger.warn("Maintenance sent as last resort", { userId: p.userId });
+      } else {
+        logger.warn("Skipped maintenance — greeting/routing/recoverable error", {
+          userId: p.userId,
+          incomingText: incomingText.slice(0, 40)
         });
       }
     } catch (inner) {

@@ -19,7 +19,8 @@ const {
 const {
   logFallbackTriggered,
   buildSafeMenuOutbound,
-  isWhatsAppDeliveryError
+  isWhatsAppDeliveryError,
+  isRecoverableBotError
 } = require("./safeFallback");
 
 const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
@@ -68,36 +69,41 @@ async function processIncomingMessage({
   notifyAdmin,
   webhookTestReply = false
 }) {
-  const payload = parseIncomingMessage(body, waConfig.provider);
+  let payload;
+  let incomingText = "";
+  let lang = "ru";
 
-  if (!payload) {
-    logger.debug("Webhook ignored (no parseable message)", {
-      typeWebhook: body?.typeWebhook,
-      typeMessage: body?.messageData?.typeMessage
-    });
-    return;
-  }
+  try {
+    payload = parseIncomingMessage(body, waConfig.provider);
 
-  if (!payload.userId) return;
+    if (!payload) {
+      logger.debug("Webhook ignored (no parseable message)", {
+        typeWebhook: body?.typeWebhook,
+        typeMessage: body?.messageData?.typeMessage
+      });
+      return;
+    }
 
-  if (!payload.text && !payload.isButton) {
-    logger.debug("Webhook skipped (empty text, not a button)", {
-      typeMessage: payload.typeMessage
-    });
-    return;
-  }
+    if (!payload.userId) return;
 
-  if (isDuplicate(payload.messageId)) {
-    logger.debug("Duplicate message skipped", { messageId: payload.messageId });
-    return;
-  }
+    if (!payload.text && !payload.isButton) {
+      logger.debug("Webhook skipped (empty text, not a button)", {
+        typeMessage: payload.typeMessage
+      });
+      return;
+    }
 
-  const session = getSession(payload.userId);
+    if (isDuplicate(payload.messageId)) {
+      logger.debug("Duplicate message skipped", { messageId: payload.messageId });
+      return;
+    }
 
-  const incomingText = String(payload.buttonText || payload.text || "").trim();
-  let lang = normalizeLanguage(session.language);
+    const session = getSession(payload.userId);
 
-  console.log("INCOMING TEXT:", incomingText);
+    incomingText = String(payload.buttonText || payload.text || "").trim();
+    lang = normalizeLanguage(session.language);
+
+    console.log("INCOMING TEXT:", incomingText);
 
   if (!webhookTestReply && incomingText) {
     const gate = runGlobalIntentGate({
@@ -111,7 +117,7 @@ async function processIncomingMessage({
     });
 
     if (gate.handled) {
-      session.menuContext = "main";
+      session.menuContext = gate.outbound?.menuContext || "main";
       saveSession(payload.userId, session, ["globalIntentGate"]);
       try {
         await deliverOutbound({
@@ -129,6 +135,23 @@ async function processIncomingMessage({
           stage: "globalIntentGateDeliver"
         });
         logger.error("Global gate reply not delivered", { message: sendErr.message });
+        try {
+          const recoverySession = getSession(payload.userId);
+          const menuOutbound = buildSafeMenuOutbound(recoverySession, lang);
+          if (menuOutbound?.reply) {
+            await sendWhatsApp({
+              config: waConfig,
+              to: payload.userId,
+              text: menuOutbound.reply,
+              logger
+            });
+          }
+        } catch (menuSendErr) {
+          logFallbackTriggered(menuSendErr, {
+            userId: payload.userId,
+            stage: "globalIntentGateMenuRecovery"
+          });
+        }
       }
       logger.info("Global intent gate (incomingMessage)", {
         userId: payload.userId,
@@ -215,8 +238,28 @@ async function processIncomingMessage({
       userId: payload.userId,
       message: sendErr.message
     });
-    if (!isWhatsAppDeliveryError(sendErr)) {
-      throw sendErr;
+
+    if (!isWhatsAppDeliveryError(sendErr) && !isRecoverableBotError(sendErr)) {
+      try {
+        const recoverySession = getSession(payload.userId);
+        const menuOutbound = buildSafeMenuOutbound(recoverySession, lang);
+        if (menuOutbound?.reply) {
+          await sendWhatsApp({
+            config: waConfig,
+            to: payload.userId,
+            text: menuOutbound.reply,
+            logger
+          });
+          logger.info("Safe menu sent after deliverOutbound failure", {
+            userId: payload.userId
+          });
+        }
+      } catch (menuSendErr) {
+        logFallbackTriggered(menuSendErr, {
+          userId: payload.userId,
+          stage: "deliverOutboundMenuRecovery"
+        });
+      }
     }
   }
 
@@ -244,6 +287,45 @@ async function processIncomingMessage({
 
   sessionAfter.menuContext = menuContext;
   updateSession(payload.userId, sessionAfter);
+  } catch (err) {
+    logFallbackTriggered(err, {
+      userId: payload?.userId,
+      stage: "processIncomingMessage",
+      incomingText: incomingText.slice(0, 80)
+    });
+    logger.error("Incoming pipeline failed — attempting safe menu (never maintenance here)", {
+      userId: payload?.userId,
+      message: err.message
+    });
+
+    if (!payload?.userId) {
+      throw err;
+    }
+
+    try {
+      const recoverySession = getSession(payload.userId);
+      const menuOutbound = buildSafeMenuOutbound(recoverySession, lang);
+      if (menuOutbound?.reply) {
+        await sendWhatsApp({
+          config: waConfig,
+          to: payload.userId,
+          text: menuOutbound.reply,
+          logger
+        });
+        logger.info("Safe menu sent from processIncomingMessage catch", {
+          userId: payload.userId
+        });
+      }
+    } catch (menuSendErr) {
+      logFallbackTriggered(menuSendErr, {
+        userId: payload.userId,
+        stage: "processIncomingMessageMenuRecovery"
+      });
+      if (!isWhatsAppDeliveryError(err) && !isRecoverableBotError(err)) {
+        throw err;
+      }
+    }
+  }
 }
 
 module.exports = { processIncomingMessage };

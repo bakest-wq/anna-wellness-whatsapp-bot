@@ -18,16 +18,33 @@ const ROUTING_TO_EMOTION = {
   heavy_distress: "emotional_exhaustion"
 };
 
-/** Smart map по ТЗ */
+/** Emotional mapping → 1–2 guided practices (concierge, не каталог) */
 const ROUTING_RECOMMENDATIONS = {
   fatigue: { primary: "earthflow", alt: "five" },
-  anxiety: { primary: "breath", alt: "bars" },
+  anxiety: { primary: "bars", alt: "earthflow" },
   body_tension: { primary: "five_bamboo", alt: "mukaino" },
   low_energy: { primary: "earthflow", alt: "five" },
   emotional_exhaustion: { primary: "earthflow", alt: "bars" },
-  need_relaxation: { primary: "five", alt: "earthflow" },
-  need_calm: { primary: "breath", alt: "bars" },
+  need_relaxation: { primary: "five", alt: "five_fire" },
+  need_calm: { primary: "earthflow", alt: "bars" },
   heavy_distress: { primary: "earthflow", alt: "bars" }
+};
+
+/** Concierge emotion id → routing intent */
+const CONCIERGE_EMOTION_TO_ROUTING = {
+  fatigue: "fatigue",
+  anxiety: "anxiety",
+  body_tension: "body_tension",
+  no_energy: "low_energy",
+  emotional_exhaustion: "emotional_exhaustion",
+  want_relax: "need_relaxation",
+  want_peace: "need_calm"
+};
+
+const WELCOME_FEELING_ROUTES = {
+  fatigue: "__intent_fatigue__",
+  anxiety: "__intent_anxiety__",
+  need_relaxation: "__intent_need_relaxation__"
 };
 
 const PRACTICE_BENEFITS = {
@@ -57,38 +74,92 @@ const PRACTICE_BENEFITS = {
   }
 };
 
-const EMPATHY = {
+const INTERPRETATION = {
   ru: {
-    fatigue: "Понимаю вас 🤍\nКогда внутри много усталости, телу и нервной системе часто хочется тишины и бережного восстановления.",
+    fatigue:
+      "Когда накапливается усталость, телу часто хочется замедлиться и мягко восстановить силы 🌿",
     anxiety:
-      "Понимаю вас 🤍\nТревога забирает много сил — телу нужна тишина и мягкая, спокойная опора.",
+      "Когда внутри накапливается напряжение, телу часто хочется замедлиться и почувствовать больше внутреннего спокойствия 🌿",
     body_tension:
-      "Понимаю вас 🤍\nКогда тело держит напряжение, важен бережный контакт — без спешки и лишних ожиданий.",
+      "Когда тело держит напряжение, важны бережный контакт и мягкое освобождение без спешки 🌿",
     low_energy:
-      "Понимаю вас 🤍\nКогда мало сил, телу нужен мягкий ритм — без давления на себя.",
+      "Когда мало сил, телу нужен спокойный ритм и мягкая перезагрузка — без давления на себя 🌿",
     emotional_exhaustion:
-      "Понимаю вас 🤍\nКогда внутри много усталости и опустошения, телу нужны тишина и бережное восстановление.",
+      "Когда внутри много опустошения, телу и нервной системе важны тишина и бережное восстановление 🌿",
     need_relaxation:
-      "Понимаю вас 🤍\nЖелание расслабиться — очень естественное. Здесь можно в своём темпе.",
+      "Желание расслабиться — очень естественное. Телу хочется глубоко выдохнуть и отпустить лишнее 🌿",
     need_calm:
-      "Понимаю вас 🤍\nКогда хочется спокойствия, телу и нервной системе важны тишина и мягкий ритм.",
+      "Когда хочется спокойствия, телу и нервной системе важны тишина и мягкий ритм 🌿",
     heavy_distress:
-      "Мне очень жаль, что вам сейчас так тяжело 🤍\nВы можете не спешить. Я рядом — мягко подскажу варианты заботы о себе."
+      "Сейчас может быть особенно тяжело — здесь можно не спешить и быть бережной к себе 🌿"
   },
   kz: {
     fatigue:
-      "Түсінемін 🤍\nІшкі шаршау жиналған кезде, денеге тыныштық пен жұмсақ қалпына келу керек болады.",
+      "Шаршау жиналғанда, дене баяуласу мен жұмсақ қалпына келуді қалауы мүмкін 🌿",
     anxiety:
-      "Түсінемін 🤍\nМазасыздық күшті шаршатады — дене мен жүйкеге тыныштық керек.",
+      "Ішкі кернеу жиналғанда, дене баяулап, көбірек тыныштық сезінгісі келуі мүмкін 🌿",
     body_tension:
-      "Түсінемін 🤍\nДене кернеуді ұстап тұрғанда, асықпай, жұмсақ қамқорлық маңызды.",
-    low_energy: "Түсінемін 🤍\nҚуаты аз болғанда, өзіңізден артық талап етпей-ақ, жұмсақ қалпына келу маңызды.",
+      "Дене кернеуді ұстап тұрғанда, асықпай, жұмсақ қамқорлық маңызды 🌿",
+    low_energy:
+      "Қуаты аз болғанда, өзіңізден артық талап етпей-ақ, жұмсақ қалпына келу маңызды 🌿",
     emotional_exhaustion:
-      "Түсінемін 🤍\nІшкі шаршау мен босаңсу жиналғанда, денеге тыныштық керек.",
-    need_relaxation: "Түсінемін 🤍\nБосанғыңыз келуі — өте табиғи. Мұнда өз ритміңізде болады.",
-    need_calm: "Түсінемін 🤍\nТыныштық қажет болғанда, дене мен жүйкеге асықпай қарау маңызды.",
+      "Ішкі шаршау мен босаңсу жиналғанда, денеге тыныштық керек 🌿",
+    need_relaxation:
+      "Босанғыңыз келуі — өте табиғи. Дене терең дем алуды қалауы мүмкін 🌿",
+    need_calm:
+      "Тыныштық қажет болғанда, дене мен жүйкеге асықпай қарау маңызды 🌿",
     heavy_distress:
-      "Қазір сізге ауыр екенін түсінемін 🤍\nАсықпай ала беріңіз. Мен қасыңыздамын — жұмсақ қамқорлық нұсқаларын айтып беремін."
+      "Қазір ауыр болуы мүмкін — мұнда асықпай, өзіңізге жұмсақ болыңыз 🌿"
+  }
+};
+
+const WHY_BULLETS = {
+  ru: {
+    fatigue: ["восстановить силы", "замедлиться", "почувствовать больше опоры"],
+    anxiety: [
+      "снизить внутреннее напряжение",
+      "почувствовать лёгкость",
+      "немного выдохнуть"
+    ],
+    body_tension: ["снять зажимы", "почувствовать лёгкость в теле", "двигаться свободнее"],
+    low_energy: ["мягко восстановить энергию", "заземлиться", "не перегружать себя"],
+    emotional_exhaustion: ["отдохнуть эмоционально", "почувствовать тишину", "бережно восстановиться"],
+    need_relaxation: ["глубоко расслабиться", "выдохнуть", "отпустить накопившееся"],
+    need_calm: ["успокоить нервную систему", "найти внутренний ритм", "почувствовать больше тишины"],
+    heavy_distress: ["почувствовать безопасность", "замедлиться", "быть бережной к себе"]
+  },
+  kz: {
+    fatigue: ["қуатты қалпына келтіру", "баяуласу", "тірек сезіну"],
+    anxiety: ["ішкі кернеуді жеңілдету", "жеңілдік сезіну", "бір сауық дем алу"],
+    body_tension: ["кернеуді жіберу", "денеде жеңілдік", "еркін қозғалу"],
+    low_energy: ["қуатты жұмсақ қалпына келтіру", "жерге бекіну", "өзіңізді асырмай қамқор ету"],
+    emotional_exhaustion: ["эмоциялық дем алу", "тыныштық", "абайлап қалпына келу"],
+    need_relaxation: ["терең босану", "дем алу", "жиналғанды жіберу"],
+    need_calm: ["жүйкені тыныштандыру", "ішкі ритм", "көбірек тыныштық"],
+    heavy_distress: ["қауіпсіздік сезіну", "баяуласу", "өзіңізге жұмсақ болу"]
+  }
+};
+
+const EMPATHY = {
+  ru: {
+    fatigue: "Понимаю 🤍",
+    anxiety: "Понимаю 🤍",
+    body_tension: "Понимаю 🤍",
+    low_energy: "Понимаю 🤍",
+    emotional_exhaustion: "Понимаю 🤍",
+    need_relaxation: "Понимаю 🤍",
+    need_calm: "Понимаю 🤍",
+    heavy_distress: "Мне очень жаль, что вам сейчас так тяжело 🤍"
+  },
+  kz: {
+    fatigue: "Түсінемін 🤍",
+    anxiety: "Түсінемін 🤍",
+    body_tension: "Түсінемін 🤍",
+    low_energy: "Түсінемін 🤍",
+    emotional_exhaustion: "Түсінемін 🤍",
+    need_relaxation: "Түсінемін 🤍",
+    need_calm: "Түсінемін 🤍",
+    heavy_distress: "Қазір сізге ауыр екенін түсінемін 🤍"
   }
 };
 
@@ -213,32 +284,77 @@ function getAfterBookingActions(lang) {
 function buildPremiumRecommendationMessage(language, routingIntent, options = {}) {
   const lang = langKey(language);
   const { primary, alt } = recommendByRoutingIntent(routingIntent);
+  const empathyLine = EMPATHY[lang][routingIntent] || EMPATHY[lang].fatigue;
+  const interpret =
+    INTERPRETATION[lang][routingIntent] || INTERPRETATION[lang].fatigue;
   const empathy =
-    options.skipEmpathy === true
-      ? ""
-      : `${EMPATHY[lang][routingIntent] || EMPATHY[lang].fatigue}\n\n`;
+    options.skipEmpathy === true ? "" : `${empathyLine}\n${interpret}\n\n`;
   const primaryName = practiceDisplayName(primary, lang);
   const altName = practiceDisplayName(alt, lang);
-  const bullets = (PRACTICE_BENEFITS[primary] || PRACTICE_BENEFITS.earthflow)[lang];
-  const bulletLines = bullets.map((b) => `— ${b}`).join("\n");
+  const bullets = WHY_BULLETS[lang][routingIntent] || WHY_BULLETS[lang].fatigue;
+  const bulletLines = bullets.map((b) => `• ${b}`).join("\n");
 
   if (lang === "kz") {
-    return `${empathy}Жағдайыңызға сай ${primaryName} 🌿
-Оны жиі мына үшін таңдайды:
-${bulletLines}
+    return `${empathy}Қазір сізге ерекше жақсы келуі мүмкін:
+— ${primaryName}
+— ${altName}
 
-Жұмсақ нұсқа ретінде — ${altName}.
+Осы практикаларды жиі мына үшін таңдайды:
+${bulletLines}
 
 ${RECOMMEND_ACTIONS.kz}`;
   }
 
-  return `${empathy}Сейчас вашему состоянию может особенно подойти ${primaryName} 🌿
-Её часто выбирают, когда хочется:
+  return `${empathy}Сейчас вам может особенно подойти:
+— ${primaryName}
+— ${altName}
+
+Эти практики часто выбирают, когда хочется:
 ${bulletLines}
 
-Если захотите мягче — также может откликнуться ${altName}.
-
 ${RECOMMEND_ACTIONS.ru}`;
+}
+
+/**
+ * Текст / цифра с welcome_feeling или concierge emotion → routing intent.
+ */
+function resolveEmotionalSelectionRoute(text, buttonId, menuContext = "main") {
+  const { resolveMenuAction } = require("./menus");
+  const route = resolveMenuAction(buttonId, text, menuContext);
+  if (route?.startsWith("__intent_")) {
+    return route.replace("__intent_", "").replace(/__$/, "");
+  }
+
+  const norm = String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s0-9️⃣🌸🌿🤍]+/u, "")
+    .replace(/\s+/g, " ");
+
+  const WELCOME_LABELS = [
+    { keys: [/усталост|нет сил|шаршау|қуат жоқ/], intent: "fatigue" },
+    { keys: [/тревог|напряжен|мазасыз|кернеу/], intent: "anxiety" },
+    { keys: [/расслаб|босанғым|босану/], intent: "need_relaxation" }
+  ];
+
+  for (const row of WELCOME_LABELS) {
+    if (row.keys.some((re) => re.test(norm))) return row.intent;
+  }
+
+  const { EMOTIONS } = require("./concierge/constants");
+  if (buttonId) {
+    const em = EMOTIONS.find((e) => e.buttonId === buttonId);
+    if (em) return CONCIERGE_EMOTION_TO_ROUTING[em.id] || em.id;
+  }
+  for (const em of EMOTIONS) {
+    const ru = em.labelRu.toLowerCase();
+    const kz = em.labelKz.toLowerCase();
+    if (norm.includes(ru) || norm.includes(kz)) {
+      return CONCIERGE_EMOTION_TO_ROUTING[em.id] || em.id;
+    }
+  }
+
+  return null;
 }
 
 function persistPremiumRecommendation(session, language, routingIntent) {
@@ -306,16 +422,20 @@ function buildAlternativeRecommendationOutbound(session, language) {
   const primaryName = practiceDisplayName(primary, lang);
   const bullets = (PRACTICE_BENEFITS[primary] || PRACTICE_BENEFITS.earthflow)[lang];
   const bulletLines = bullets.map((b) => `— ${b}`).join("\n");
+  const whyLines = (WHY_BULLETS[lang][routingIntent] || WHY_BULLETS[lang].fatigue)
+    .map((b) => `• ${b}`)
+    .join("\n");
+
   const reply =
     lang === "kz"
-      ? `Жұмсақ нұсқа ретінде — ${primaryName} 🌿
+      ? `Басқа жұмсақ нұсқа — ${primaryName} 🌿
 Оны жиі мына үшін таңдайды:
-${bulletLines}
+${whyLines}
 
 ${RECOMMEND_ACTIONS.kz}`
-      : `Мягкая альтернатива — ${primaryName} 🌿
+      : `Другой мягкий вариант — ${primaryName} 🌿
 Её часто выбирают, когда хочется:
-${bulletLines}
+${whyLines}
 
 ${RECOMMEND_ACTIONS.ru}`;
 
@@ -329,9 +449,12 @@ ${RECOMMEND_ACTIONS.ru}`;
 
 module.exports = {
   ROUTING_RECOMMENDATIONS,
+  CONCIERGE_EMOTION_TO_ROUTING,
+  WELCOME_FEELING_ROUTES,
   RECOMMEND_ACTIONS,
   recommendByRoutingIntent,
   mapRoutingToEmotionId,
+  resolveEmotionalSelectionRoute,
   getPremiumWelcomeMessage,
   getWelcomeFeelingMenu,
   getCompactMainMenu,
