@@ -1,4 +1,4 @@
-const { parseWebsiteDeepLink } = require("../src/deepLinks");
+const { parseWebsiteDeepLink, isSiteDeepLinkMessage } = require("../src/deepLinks");
 const { SERVICES, PACKAGES } = require("../shared/sakina-wellness.config");
 
 const cases = [
@@ -31,6 +31,11 @@ if (!svc || svc.price !== "30 000 ₸") {
 }
 if (!pkg || pkg.price !== "45 000 ₸") {
   console.error("FAIL package config");
+  process.exit(1);
+}
+
+if (isSiteDeepLinkMessage("Здравствуйте")) {
+  console.error("FAIL bare greeting must not be site deeplink");
   process.exit(1);
 }
 

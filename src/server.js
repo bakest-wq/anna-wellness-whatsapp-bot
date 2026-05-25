@@ -11,6 +11,14 @@ const { WELLNESS, SERVICES, FAQ } = require("./knowledge");
 const { BRAND } = require("./brand");
 const { processIncomingMessage } = require("./incomingMessage");
 const { parseIncomingFromGreen, sendWhatsApp } = require("./whatsapp");
+const {
+  logFallbackTriggered,
+  shouldSendMaintenanceToUser,
+  getMaintenanceMessage,
+  buildSafeMenuOutbound,
+  isWhatsAppDeliveryError
+} = require("./safeFallback");
+const { getSession } = require("./sessionStore");
 
 const app = express();
 
@@ -99,18 +107,47 @@ async function processWebhook(req, res) {
       webhookTestReply: WEBHOOK_TEST_REPLY
     });
   } catch (err) {
+    logFallbackTriggered(err, { path: req.path });
     logger.error("Webhook error", { message: err.message, data: err?.response?.data });
+
+    if (isWhatsAppDeliveryError(err)) {
+      logger.error("Webhook stopped: WhatsApp delivery only (user not sent maintenance)", {
+        message: err.message
+      });
+      return;
+    }
+
     try {
       const p = parseIncomingFromGreen(req.body);
-      if (p?.userId) {
+      if (!p?.userId) return;
+
+      const session = getSession(p.userId);
+      const menuOutbound = buildSafeMenuOutbound(session, session.language || "ru");
+
+      try {
         await sendWhatsApp({
           config: waConfig,
           to: p.userId,
-          text: "Здравствуйте 🌿 Сейчас небольшая пауза. Напишите, пожалуйста, чуть позже — мы обязательно ответим.",
+          text: menuOutbound.reply,
+          logger
+        });
+        logger.info("Safe menu fallback sent after webhook error", { userId: p.userId });
+        return;
+      } catch (sendErr) {
+        logFallbackTriggered(sendErr, { userId: p.userId, stage: "serverSafeMenuSend" });
+      }
+
+      if (shouldSendMaintenanceToUser(err)) {
+        await sendWhatsApp({
+          config: waConfig,
+          to: p.userId,
+          text: `Здравствуйте 🌿 ${getMaintenanceMessage(session.language)}`,
           logger
         });
       }
-    } catch (_) {}
+    } catch (inner) {
+      logFallbackTriggered(inner, { stage: "serverWebhookRecovery" });
+    }
   }
 }
 

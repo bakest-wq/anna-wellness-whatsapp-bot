@@ -24,6 +24,11 @@ const {
   clearConciergeFields
 } = require("./sessionMemory");
 const { parseWebsiteDeepLink, isSiteDeepLinkMessage } = require("./deepLinks");
+const { isGreetingReset } = require("./greetingReset");
+const {
+  logFallbackTriggered,
+  buildSafeMenuOutbound
+} = require("./safeFallback");
 const BOT_ID_TO_ROUTE = {
   five: "practice_five",
   five_fire: "practice_five_fire",
@@ -319,7 +324,7 @@ function buildMainMenuWelcome(session, language, options = {}) {
   };
 }
 
-async function handleIncomingMessage({
+async function handleIncomingMessageCore({
   userId,
   text,
   buttonId,
@@ -337,8 +342,8 @@ async function handleIncomingMessage({
   let pendingRoute = null;
   let language = normalizeLanguage(session.language);
 
-  // ━━━ САЙТ (sakinawellness.kz) — ДО global reset / меню ━━━
-  if (!isButton && isSiteDeepLinkMessage(incomingText)) {
+  // ━━━ САЙТ (sakinawellness.kz) — ДО global reset / меню (не чистое приветствие) ━━━
+  if (!isButton && !isGreetingReset(incomingText) && isSiteDeepLinkMessage(incomingText)) {
     language = normalizeLanguage(
       resolveClientLanguage(incomingText, session.language, { isButton })
     );
@@ -850,8 +855,33 @@ async function handleIncomingMessage({
   });
 }
 
+async function handleIncomingMessage(params) {
+  try {
+    return await handleIncomingMessageCore(params);
+  } catch (err) {
+    logFallbackTriggered(err, {
+      userId: params.userId,
+      text: String(params.buttonText || params.text || "").slice(0, 80)
+    });
+    params.logger?.error?.("Conversation fallback → main menu", {
+      message: err.message,
+      userId: params.userId
+    });
+
+    const session = getSession(params.userId);
+    const language = normalizeLanguage(session.language);
+    hardResetFlow(session);
+    session.booking = null;
+    session.concierge = null;
+    const outbound = buildSafeMenuOutbound(session, language);
+    saveSession(params.userId, session, ["safeFallbackMenu"]);
+    return outbound;
+  }
+}
+
 module.exports = {
   handleIncomingMessage,
+  handleIncomingMessageCore,
   buildMainMenuWelcome,
   resetConversationState
 };

@@ -23,13 +23,20 @@ function normalize(text) {
     .trim();
 }
 
+/** Полное совпадение или клиент вставил весь текст кнопки с сайта (не короткое приветствие). */
 function textsMatch(incoming, template) {
   const a = normalize(incoming);
   const b = normalize(template);
   if (!a || !b) return false;
   if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
+  if (a.length >= 18 && a.includes(b)) return true;
+  if (b.length >= 18 && b.includes(a) && a.length >= 12) return true;
   return false;
+}
+
+function isBareGreeting(text) {
+  const t = normalize(text);
+  return /^(здравствуйте|здравствуй|привет|салам|салем|сәлем|hello|hi|hey)$/.test(t);
 }
 
 /** Сортировка: длинные названия первыми — точнее матч «5 континентов с огнём» */
@@ -127,6 +134,7 @@ function isPackageSiteMessage(raw) {
  * @returns {boolean}
  */
 function isSiteDeepLinkMessage(text) {
+  if (isBareGreeting(text)) return false;
   return Boolean(parseWebsiteDeepLink(text)?.action);
 }
 
@@ -249,7 +257,9 @@ function parseWebsiteDeepLink(text) {
 module.exports = {
   parseWebsiteDeepLink,
   isSiteDeepLinkMessage,
+  isBareGreeting,
   findServiceInText,
   findPackageInText,
-  BOT_ID_TO_ROUTE
+  BOT_ID_TO_ROUTE,
+  textsMatch
 };

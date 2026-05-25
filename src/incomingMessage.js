@@ -16,6 +16,11 @@ const {
   sendOutboundMessages,
   tryInteractiveButtonsOnly
 } = require("./whatsapp");
+const {
+  logFallbackTriggered,
+  buildSafeMenuOutbound,
+  isWhatsAppDeliveryError
+} = require("./safeFallback");
 
 const CONCIERGE_DELAY_MS = Number(process.env.CONCIERGE_STEP_DELAY_MS || 1200);
 /** Главное меню — только текст; интерактивные кнопки ломаются при >3 пунктах */
@@ -27,19 +32,32 @@ function shouldSendInteractiveButtons(menuContext) {
   return MENU_BUTTONS_AFTER;
 }
 
-async function sendMainMenuReply({ waConfig, userId, lang, outbound, logger }) {
-  const toSend = enrichOutboundMessages(outbound.messages, lang, "main", {
-    skipMenu: outbound.skipMenu
-  });
+async function deliverOutbound({ waConfig, userId, lang, outbound, menuContext, result, logger }) {
+  const toSend = enrichOutboundMessages(
+    outbound.messages || (outbound.reply ? [{ type: "text", text: outbound.reply }] : []),
+    lang,
+    menuContext,
+    { skipMenu: outbound.skipMenu ?? result?.skipMenu }
+  );
 
-  if (toSend.length) {
-    await sendOutboundMessages({
-      config: waConfig,
-      to: userId,
-      messages: toSend,
-      logger
-    });
+  if (!toSend.length) {
+    if (!result?.skipMenu) {
+      await sendWhatsApp({
+        config: waConfig,
+        to: userId,
+        text: getMenuTextBlock(lang, menuContext),
+        logger
+      });
+    }
+    return;
   }
+
+  await sendOutboundMessages({
+    config: waConfig,
+    to: userId,
+    messages: toSend,
+    logger
+  });
 }
 
 async function processIncomingMessage({
@@ -95,13 +113,23 @@ async function processIncomingMessage({
     if (gate.handled) {
       session.menuContext = "main";
       saveSession(payload.userId, session, ["globalIntentGate"]);
-      await sendMainMenuReply({
-        waConfig,
-        userId: payload.userId,
-        lang,
-        outbound: gate.outbound,
-        logger
-      });
+      try {
+        await deliverOutbound({
+          waConfig,
+          userId: payload.userId,
+          lang,
+          outbound: gate.outbound,
+          menuContext: "main",
+          result: gate.outbound,
+          logger
+        });
+      } catch (sendErr) {
+        logFallbackTriggered(sendErr, {
+          userId: payload.userId,
+          stage: "globalIntentGateDeliver"
+        });
+        logger.error("Global gate reply not delivered", { message: sendErr.message });
+      }
       logger.info("Global intent gate (incomingMessage)", {
         userId: payload.userId,
         reason: gate.reason
@@ -121,58 +149,75 @@ async function processIncomingMessage({
 
   let result;
 
-  if (webhookTestReply) {
-    result = { reply: null, menuContext: "main", skipMenu: false };
-  } else {
-    result = await handleIncomingMessage({
-      userId: payload.userId,
-      text: payload.text,
-      buttonId: payload.buttonId,
-      buttonText: payload.buttonText,
-      isButton: payload.isButton,
-      menuContext: session.menuContext || "main",
-      openai,
-      model,
-      logger,
-      notifyAdmin
-    });
-  }
+  try {
+    if (webhookTestReply) {
+      result = { reply: null, menuContext: "main", skipMenu: false };
+    } else {
+      result = await handleIncomingMessage({
+        userId: payload.userId,
+        text: payload.text,
+        buttonId: payload.buttonId,
+        buttonText: payload.buttonText,
+        isButton: payload.isButton,
+        menuContext: session.menuContext || "main",
+        openai,
+        model,
+        logger,
+        notifyAdmin
+      });
+    }
 
-  const reply = result?.reply || (typeof result === "string" ? result : null);
-  const outbound = result?.messages || (reply ? [{ type: "text", text: reply }] : []);
+    if (!result?.reply && !result?.messages?.length && !result?.skipMenu) {
+      const sessionMid = getSession(payload.userId);
+      result = buildSafeMenuOutbound(sessionMid, lang);
+      saveSession(payload.userId, sessionMid, ["emptyReplyMenu"]);
+    }
+  } catch (err) {
+    logFallbackTriggered(err, { userId: payload.userId, stage: "handleIncomingMessage" });
+    const sessionErr = getSession(payload.userId);
+    result = buildSafeMenuOutbound(sessionErr, lang);
+    saveSession(payload.userId, sessionErr, ["incomingSafeFallback"]);
+  }
 
   const sessionAfter = getSession(payload.userId);
   lang = normalizeLanguage(sessionAfter.language);
   const menuContext = result?.menuContext || "main";
 
-  const toSend = enrichOutboundMessages(outbound, lang, menuContext, {
+  const outbound = {
+    reply: result?.reply,
+    messages: result?.messages,
     skipMenu: result?.skipMenu
-  });
+  };
 
-  if (result?.conciergeTyping && toSend.length) {
+  if (result?.conciergeTyping) {
     await new Promise((r) => setTimeout(r, CONCIERGE_DELAY_MS));
   }
 
-  if (toSend.length) {
-    await sendOutboundMessages({
-      config: waConfig,
-      to: payload.userId,
-      messages: toSend,
+  try {
+    await deliverOutbound({
+      waConfig,
+      userId: payload.userId,
+      lang,
+      outbound,
+      menuContext,
+      result,
       logger
     });
     logger.info("Reply sent", {
       userId: payload.userId,
-      parts: toSend.length,
+      menuContext,
       withMenu: !result?.skipMenu,
-      preview: String(toSend[0]?.text || toSend[0]?.type).slice(0, 90)
+      preview: String(outbound.reply || outbound.messages?.[0]?.text || "").slice(0, 90)
     });
-  } else if (!result?.skipMenu) {
-    await sendWhatsApp({
-      config: waConfig,
-      to: payload.userId,
-      text: getMenuTextBlock(lang, menuContext),
-      logger
+  } catch (sendErr) {
+    logFallbackTriggered(sendErr, { userId: payload.userId, stage: "deliverOutbound" });
+    logger.error("WhatsApp delivery failed (no maintenance to user)", {
+      userId: payload.userId,
+      message: sendErr.message
     });
+    if (!isWhatsAppDeliveryError(sendErr)) {
+      throw sendErr;
+    }
   }
 
   if (

@@ -88,6 +88,12 @@ async function getAiReply({ openai, model, text, language, history, intent, prof
     { role: "user", content: userInstruction }
   ];
 
+  if (!openai?.chat?.completions?.create) {
+    const err = new Error("OpenAI client unavailable");
+    err.code = "openai_unavailable";
+    throw err;
+  }
+
   const completion = await openai.chat.completions.create({
     model,
     temperature: emotional ? 0.65 : 0.5,
