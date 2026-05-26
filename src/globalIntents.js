@@ -3,6 +3,8 @@
  * Приоритет: global → deep link (сайт) → active flow.
  */
 
+const { hasBusinessIntent } = require("./businessIntent");
+
 const GREETING_PATTERNS = [
   /^(здравствуйте|здравствуй|привет|приветствую|доброго\s+времени)\b/i,
   /^(добрый\s+(день|утро|вечер)|доброе\s+утро)\b/i,
@@ -104,6 +106,7 @@ function isGlobalIntentLocal(text, options = {}) {
     return true;
   }
   if (!raw) return false;
+  if (hasBusinessIntent(raw) && !isNavResetText(raw)) return false;
   if (isGreetingText(raw)) return true;
   if (isNavResetText(raw)) return true;
   if (isConciergeEntryReset(raw)) return true;

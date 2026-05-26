@@ -1,3 +1,5 @@
+const { hasBusinessIntent } = require("./businessIntent");
+
 const INTENT_RULES = {
   booking: {
     patterns: [
@@ -13,7 +15,7 @@ const INTENT_RULES = {
     weight: 4
   },
   price: {
-    patterns: [/\b(цен|стоим|прайс|сколько\s+стоит|бағасы|қанша\s+тұрады)/i],
+    patterns: [/(цен|стоим|прайс|сколько|бағасы|қанша\s+тұрады)/i],
     keywords: {
       ru: ["цена", "стоимость", "сколько стоит", "прайс"],
       kz: ["бағасы", "қанша", "баға"]
@@ -72,7 +74,7 @@ const INTENT_RULES = {
     weight: 4
   },
   address: {
-    patterns: [/\b(адрес|где\s+наход|как\s+доехать|қайда|орналасқан|мекенжай)/i],
+    patterns: [/(адрес|где\s+наход|где\s+вы|как\s+доехать|қайда|орналасқан|мекенжай)/i],
     keywords: {
       ru: ["адрес", "где вы", "как проехать", "где находитесь"],
       kz: ["мекенжай", "қайда", "орналасқан"]
@@ -170,10 +172,16 @@ function scoreIntent(text, language, intentName, rule) {
 }
 
 function detectClientIntent(text, language) {
+  const t = String(text || "").toLowerCase();
   const scores = {};
 
   for (const [intent, rule] of Object.entries(INTENT_RULES)) {
     scores[intent] = scoreIntent(text, language, intent, rule);
+  }
+
+  const businessIntent = hasBusinessIntent(t);
+  if (businessIntent) {
+    scores.greeting = 0;
   }
 
   const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
@@ -181,7 +189,7 @@ function detectClientIntent(text, language) {
   const [, secondScore] = sorted[1] || ["general", 0];
 
   const greetingScore = scores.greeting || 0;
-  if (greetingScore >= 2.5) {
+  if (greetingScore >= 2.5 && !businessIntent) {
     return {
       intent: "greeting",
       confidence: Math.min(1, greetingScore / 6),

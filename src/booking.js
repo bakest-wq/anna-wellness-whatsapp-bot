@@ -151,6 +151,71 @@ function extractDay(text) {
   return text.trim();
 }
 
+function extractDayHint(text) {
+  const raw = String(text || "");
+  const patterns = [
+    /послезавтра|арғы\s*күні/i,
+    /завтра|ертең/i,
+    /сегодня|бүгін/i,
+    /\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?/,
+    /\d{1,2}\s+(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек|қаң|ақп|наур|мау|мамыр|шілде|тамыз|қырк|қазан|қараш|желтоқ)[а-яәіңғүұқөһ]*/i,
+    /(?:в\s+)?(?:понедельник|вторник|среду|среда|четверг|пятницу|пятница|субботу|суббота|воскресенье|дүйсенбі|сейсенбі|сәрсенбі|бейсенбі|жұма|сенбі|жексенбі)/i
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match) return extractDay(match[0]);
+  }
+  return null;
+}
+
+function extractPracticeIdHint(text) {
+  const matched = matchService(text);
+  if (!matched) return null;
+  const svc = SERVICES.find((s) => s.name === matched);
+  return svc?.id || null;
+}
+
+function extractTimeHint(text) {
+  const raw = String(text || "");
+  const explicit = raw.match(/\b\d{1,2}[:.]\d{2}\b/);
+  if (explicit) return explicit[0];
+
+  const withPrefix = raw.match(/(?:\bв|\bк|\bна|сағат)\s*(\d{1,2})(?:\s*(?:час(?:ов|а)?|сағат))?\b/i);
+  if (withPrefix) return withPrefix[1];
+
+  const withUnit = raw.match(/\b(\d{1,2})\s*(?:час(?:ов|а)?|сағат)\b/i);
+  if (withUnit) return withUnit[1];
+
+  return null;
+}
+
+function applyBookingTextHints(session, text) {
+  const source = String(text || "");
+  let changed = false;
+
+  const practiceId = extractPracticeIdHint(source);
+  if (practiceId && !session.selectedPractice) {
+    applyPracticeToSession(session, practiceId);
+    changed = true;
+  }
+
+  const day = extractDayHint(source);
+  if (day && !session.bookingDate) {
+    session.bookingDate = day;
+    changed = true;
+  }
+
+  const timeHint = extractTimeHint(source);
+  const timeCheck = timeHint ? isValidBookingTime(timeHint) : { ok: false };
+  if (timeCheck.ok && !session.bookingTime) {
+    session.bookingTime = timeCheck.parsed;
+    changed = true;
+  }
+
+  if (changed) syncCurrentStep(session);
+  return changed;
+}
+
 function isNoContraindications(text, lang) {
   const t = String(text || "").trim().toLowerCase();
   return /^(нет|no|жоқ|жок|-|—|нету|жоқпын)$/i.test(t);
@@ -434,6 +499,7 @@ module.exports = {
   getRecommendationBookingDayQuestion,
   getBookingAfterPackageOutbound,
   getResumeBookingOutbound,
+  applyBookingTextHints,
   questionForStep,
   initBooking,
   STEPS

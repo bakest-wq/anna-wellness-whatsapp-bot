@@ -3,6 +3,7 @@
  */
 
 const { isMainMenuButtonIntent, getGlobalResetRoute } = require("./globalIntents");
+const { hasBusinessIntent } = require("./businessIntent");
 const {
   isBookingFlowActive,
   isConciergeFlowActive,
@@ -74,6 +75,7 @@ function isGlobalIntent(text, options = {}) {
 
   if (!t) return false;
   if (GLOBAL_EXACT.has(t)) return true;
+  if (hasBusinessIntent(t)) return false;
 
   if (t.length <= 56 && /^(здравств|привет|салам|салем|сәлем|hello|hi|help|menu|меню|ассалам|отмен)/i.test(t)) {
     return true;

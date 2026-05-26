@@ -9,7 +9,8 @@ const {
   getBookingStartOutbound,
   getBookingAfterPreselectOutbound,
   getBookingAfterPackageOutbound,
-  getResumeBookingOutbound
+  getResumeBookingOutbound,
+  applyBookingTextHints
 } = require("./booking");
 const {
   startBookingFlow,
@@ -29,6 +30,7 @@ const {
   logFallbackTriggered,
   buildSafeMenuOutbound
 } = require("./safeFallback");
+const { hasBusinessIntent } = require("./businessIntent");
 const BOT_ID_TO_ROUTE = {
   five: "practice_five",
   five_fire: "practice_five_fire",
@@ -215,13 +217,16 @@ function startBooking(session, language, preselectedPracticeId = null, options =
     source: options.source || "whatsapp",
     resetDraft: Boolean(options.forceNew)
   });
+  if (options.prefillText) {
+    applyBookingTextHints(session, options.prefillText);
+  }
   syncBookingWaitFlags(session);
   syncLegacyMirrors(session);
 
   if (options.packageName) {
     return getBookingAfterPackageOutbound(session, language, options.packageName);
   }
-  if (preselectedPracticeId) {
+  if (preselectedPracticeId || session.selectedPractice) {
     return getBookingAfterPreselectOutbound(session, language, {
       fromRecommendation: options.fromRecommendation === true
     });
@@ -236,7 +241,8 @@ function handleDeepLink(session, userId, deep, language, incomingText, isButton)
 
   const siteBookingOpts = {
     forceNew: true,
-    source: "sakinawellness.kz"
+    source: "sakinawellness.kz",
+    prefillText: incomingText
   };
 
   switch (deep.action) {
@@ -785,7 +791,9 @@ async function handleIncomingMessageCore({
         pushHistory(session, "assistant", outbound.reply);
         return finish(session, userId, outbound);
       }
-      const outbound = startBooking(session, language);
+      const outbound = startBooking(session, language, null, {
+        prefillText: incomingText
+      });
       pushHistory(session, "user", isButton ? `[меню] ${incomingText}` : incomingText);
       pushHistory(session, "assistant", outbound.reply);
       logger.info("Routed by menu", { userId, routeName, isButton });
@@ -847,7 +855,9 @@ async function handleIncomingMessageCore({
   }
 
   if (clientIntent.intent === "booking") {
-    const outbound = startBooking(session, language);
+    const outbound = startBooking(session, language, null, {
+      prefillText: incomingText
+    });
     pushHistory(session, "user", incomingText);
     pushHistory(session, "assistant", outbound.reply);
     return finish(session, userId, outbound);
@@ -886,9 +896,10 @@ async function handleIncomingMessageCore({
 
   const isFirstContact = !session.history.length;
   const isGreeting =
-    isFirstContact ||
-    clientIntent.intent === "greeting" ||
-    /^(привет|здравств|сәлем|салем)/i.test(incomingText);
+    !hasBusinessIntent(incomingText) &&
+    (isFirstContact ||
+      clientIntent.intent === "greeting" ||
+      /^(привет|здравств|сәлем|салем)/i.test(incomingText));
 
   if (isGreeting || isGlobalResetIntent(incomingText, { isButton, buttonId, menuContext })) {
     resetConversationState(session, userId);
