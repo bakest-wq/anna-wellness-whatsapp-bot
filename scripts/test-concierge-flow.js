@@ -8,7 +8,7 @@ const logger = {
 };
 
 async function run() {
-  const userId = "concierge-flow-test";
+  const userId = `concierge-flow-test-${Date.now()}`;
 
   const first = await handleIncomingMessage({
     userId,
@@ -22,32 +22,40 @@ async function run() {
     process.exit(1);
   }
 
-  const emotion = await handleIncomingMessage({
+  const recommendation = await handleIncomingMessage({
     userId,
     text: "4",
     menuContext: "concierge_emotion",
     logger
   });
 
-  if (emotion.menuContext !== "concierge_outcome") {
-    console.error("Expected concierge_outcome after emotion choice, got", emotion.menuContext);
+  if (recommendation.menuContext !== "recommendation_card") {
+    console.error(
+      "Expected recommendation_card after emotion choice, got",
+      recommendation.menuContext
+    );
     process.exit(1);
   }
 
-  const outcome = await handleIncomingMessage({
+  if (/небольшая пауза/i.test(recommendation.reply || "")) {
+    console.error("Unexpected pause fallback after emotion choice");
+    process.exit(1);
+  }
+
+  if (!/1️⃣|подробнее|записаться|практик/i.test(recommendation.reply || "")) {
+    console.error("Expected recommendation actions, got", recommendation.reply);
+    process.exit(1);
+  }
+
+  const extraDigit = await handleIncomingMessage({
     userId,
     text: "4",
-    menuContext: "concierge_outcome",
+    menuContext: "recommendation_card",
     logger
   });
 
-  if (outcome.menuContext !== "concierge_card") {
-    console.error("Expected concierge_card after outcome choice, got", outcome.menuContext);
-    process.exit(1);
-  }
-
-  if (!/Access Bars|Five|EarthFlow|Mukaino|дыхательная|Бары/i.test(outcome.reply || "")) {
-    console.error("Expected recommendation card, got", outcome.reply);
+  if (extraDigit.menuContext !== "recommendation_card") {
+    console.error("Expected recommendation_card after invalid card digit, got", extraDigit.menuContext);
     process.exit(1);
   }
 
