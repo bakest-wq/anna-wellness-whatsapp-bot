@@ -113,10 +113,11 @@ function normalizeLegacySession(raw, chatId) {
   }
 
   if (raw.currentFlow === "concierge") {
-    session.currentStep = raw.concierge.step || "emotion";
-    session.emotionalState = raw.concierge.emotion || session.emotionalState;
-    session.desiredOutcome = raw.concierge.outcome || session.desiredOutcome;
-    session.recommendedPractice = raw.concierge.practiceId || session.recommendedPractice;
+    const concierge = raw.concierge || {};
+    session.currentStep = concierge.step || raw.currentStep || "emotion";
+    session.emotionalState = concierge.emotion || session.emotionalState;
+    session.desiredOutcome = concierge.outcome || session.desiredOutcome;
+    session.recommendedPractice = concierge.practiceId || session.recommendedPractice;
   }
 
   delete session.booking;
