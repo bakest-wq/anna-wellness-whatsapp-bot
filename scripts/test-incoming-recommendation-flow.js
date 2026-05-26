@@ -66,9 +66,9 @@ async function run() {
     process.exit(1);
   }
 
-  const detail = sent[2].text || "";
-  if (!/EarthFlow|5 континентов|Что это|Практика/i.test(detail)) {
-    console.error("Expected practice detail after recommendation action, got", detail);
+  const booking = sent[2].text || "";
+  if (!/день|удобн|запис|сеанс/i.test(booking)) {
+    console.error("Expected booking start after primary recommendation action, got", booking);
     process.exit(1);
   }
 

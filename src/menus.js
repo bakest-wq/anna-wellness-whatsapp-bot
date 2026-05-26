@@ -234,12 +234,12 @@ const WELCOME_FEELING_NUMERIC = {
   1: "__intent_fatigue__",
   2: "__intent_anxiety__",
   3: "__intent_need_relaxation__",
-  4: "concierge"
+  4: "booking"
 };
 
 const RECOMMENDATION_CARD_NUMERIC = {
-  1: "concierge_detail",
-  2: "concierge_book",
+  1: "concierge_book",
+  2: "concierge_detail",
   3: "concierge_other"
 };
 

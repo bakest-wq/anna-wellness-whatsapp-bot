@@ -61,18 +61,18 @@ const OUTCOMES = [
 
 const CARD_ACTIONS = [
   {
-    id: "detail",
-    route: "concierge_detail",
-    buttonId: "btn_concierge_detail",
-    labelRu: "🌿 Подробнее",
-    labelKz: "🌿 Толығырақ"
-  },
-  {
     id: "book",
     route: "concierge_book",
     buttonId: "btn_concierge_book",
     labelRu: "📅 Записаться",
     labelKz: "📅 Жазылу"
+  },
+  {
+    id: "detail",
+    route: "concierge_detail",
+    buttonId: "btn_concierge_detail",
+    labelRu: "🌿 Подробнее",
+    labelKz: "🌿 Толығырақ"
   },
   {
     id: "other",

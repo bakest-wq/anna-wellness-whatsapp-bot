@@ -1,5 +1,5 @@
 /**
- * Действия после AI-рекомендации: 1 подробнее · 2 запись · 3 другой вариант.
+ * Действия после рекомендации: 1 запись · 2 подробнее · 3 другой вариант.
  */
 
 const { PRACTICE_ID_TO_ROUTE } = require("./concierge/constants");
@@ -40,8 +40,8 @@ function parseRecommendationAction(text, buttonId) {
     .replace(/^[\s0-9️⃣]+/u, "")
     .replace(/\s+/g, " ");
 
-  if (/^[1][️⃣]?\s*$/u.test(raw) || /^1$/.test(raw)) return "detail";
-  if (/^[2][️⃣]?\s*$/u.test(raw) || /^2$/.test(raw)) return "book";
+  if (/^[1][️⃣]?\s*$/u.test(raw) || /^1$/.test(raw)) return "book";
+  if (/^[2][️⃣]?\s*$/u.test(raw) || /^2$/.test(raw)) return "detail";
   if (/^[3][️⃣]?\s*$/u.test(raw) || /^3$/.test(raw)) return "alt";
 
   if (/подробнее|узнать подробнее|толығырақ|толығырақ/i.test(norm)) return "detail";

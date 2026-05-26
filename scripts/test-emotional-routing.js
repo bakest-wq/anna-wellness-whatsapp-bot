@@ -30,7 +30,7 @@ if (
   !ru ||
   !/Понимаю/.test(ru.outbound.reply) ||
   !/EarthFlow|5 континент/i.test(ru.outbound.reply) ||
-  !/Подробнее|Узнать подробнее/.test(ru.outbound.reply) ||
+  !/1️⃣ Мягко записаться/.test(ru.outbound.reply) ||
   /Выберите.*практику/i.test(ru.outbound.reply)
 ) {
   console.error("FAIL ru outbound", ru?.outbound?.reply?.slice(0, 200));
@@ -49,7 +49,7 @@ if (
 }
 
 const kz = tryEmotionalRouting("шаршадым", "kz", session);
-if (!kz || !/Түсінемін/.test(kz.outbound.reply) || !/Толығырақ/.test(kz.outbound.reply)) {
+if (!kz || !/Түсінемін/.test(kz.outbound.reply) || !/1️⃣ Жұмсақ жазылу/.test(kz.outbound.reply)) {
   console.error("FAIL kz outbound");
   process.exit(1);
 }
