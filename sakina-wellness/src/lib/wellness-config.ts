@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import type { LucideIcon } from "lucide-react";
 
-const shared = require("../../../shared/sakina-wellness.config.js") as typeof import("../../../shared/sakina-wellness.config");
+const shared = require("../../shared/sakina-wellness.config.js") as typeof import("../../shared/sakina-wellness.config");
 
 export type SharedService = (typeof shared.SERVICES)[number];
 export type SharedPackage = (typeof shared.PACKAGES)[number];
