@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Manrope, Pinyon_Script } from "next/font/google";
+import Script from "next/script";
 import {
   SITE_DESCRIPTION,
   SITE_LOGO_ALT,
@@ -29,6 +30,10 @@ const scriptAccent = Pinyon_Script({
 });
 
 const siteUrl = getSiteUrl();
+const conciergeUrl = (
+  process.env.NEXT_PUBLIC_CONCIERGE_URL ??
+  "https://sakina-concierge.vercel.app"
+).replace(/\/$/, "");
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -92,6 +97,13 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-[#FAF7F2] text-[#3D3830] antialiased [text-rendering:optimizeLegibility]">
         {children}
+        <Script
+          id="sakina-concierge-widget"
+          src={`${conciergeUrl}/embed.js`}
+          strategy="afterInteractive"
+          data-base-url={conciergeUrl}
+          data-position="bottom-right"
+        />
       </body>
     </html>
   );

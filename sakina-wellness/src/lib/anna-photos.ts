@@ -18,7 +18,8 @@ export const ANNA_PHOTOS = {
 } as const;
 
 export const ANNA_ALT = {
-  portrait: "Анна Абдулрашидовна — Sakina Wellness",
+  portrait:
+    "Анна Абдулрашидовна — wellness-практик, Sakina Wellness",
   handsWorking: "Анна ведёт сеанс — бережное прикосновение к телу",
   handsDetail: "Внимательная работа руками во время практики",
   healingTouch: "Исцеляющее прикосновение — тишина и присутствие",

@@ -4,7 +4,7 @@ import { ANNA_PHOTOS } from "./anna-photos";
  * Editorial atmosphere photography — public/images/photos/
  */
 export const SITE_PHOTOS = {
-  hero: ANNA_PHOTOS.handsWorking,
+  hero: ANNA_PHOTOS.portrait,
   portrait: ANNA_PHOTOS.portrait,
   heroVisual: ANNA_PHOTOS.handsWorking,
   heroRoom: "/images/photos/room.jpg",

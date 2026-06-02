@@ -13,7 +13,6 @@ import { PracticesSection } from "./practices-section";
 import { SessionFlowSection } from "./session-flow-section";
 import { SiteHeader } from "./site-header";
 import { StickyWhatsAppCta } from "./sticky-whatsapp-cta";
-import { TrustSection } from "./trust-section";
 
 /**
  * Quiet luxury studio — logical flow:
@@ -27,7 +26,6 @@ export function LandingPage() {
           <SiteHeader />
           <main className="relative z-10 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
             <HeroSection />
-            <TrustSection />
             <AboutAnnaSection />
             <PracticesSection />
             <AtmosphereSection />
